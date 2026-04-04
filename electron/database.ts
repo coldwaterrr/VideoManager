@@ -28,6 +28,20 @@ export type VideoRecord = {
   durationSeconds: number
   modifiedAt: string
   folderIds: number[]
+  // TMDB metadata
+  tmdbId?: number | null
+  mediaType?: string | null
+  title?: string | null
+  originalTitle?: string | null
+  overview?: string | null
+  posterPath?: string | null
+  backdropPath?: string | null
+  releaseDate?: string | null
+  voteAverage?: number
+  voteCount?: number
+  genreIds?: number[]
+  castNames?: string[]
+  scrapedAt?: string | null
 }
 
 export type LibrarySnapshot = {
@@ -56,15 +70,13 @@ let database: Database | null = null
 let databaseMeta: DatabaseMeta | null = null
 
 function getWasmPath() {
-  // 在开发环境中，WASM 文件位于项目根目录的 node_modules/sql.js/dist/
-  // 在打包环境中，WASM 文件位于 dist-electron/ 目录
-  // 从当前模块位置推断：electron/database.ts -> 向上两级到项目根 -> dist-electron/
-  const projectRoot = path.join(__dirname, '..')
-  const devWasm = path.join(projectRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
-  const distWasm = path.join(projectRoot, 'dist-electron', 'sql-wasm.wasm')
-  
-  // 开发环境优先使用 node_modules 中的 WASM
-  return devWasm
+  const isDev = !app.isPackaged
+  if (isDev) {
+    const projectRoot = path.join(__dirname, '..')
+    return path.join(projectRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
+  }
+  // 打包后，node_modules/sql.js/dist/ 会被打包进 app.asar
+  return path.join(app.getAppPath(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
 }
 
 async function loadSqlite() {
@@ -340,6 +352,34 @@ export async function ensureDatabase() {
     );
   `)
 
+  // TMDB schema migration: add columns if they don't exist
+  function addColumnIfExists(table: string, column: string, definition: string) {
+    const info = database!.exec(`PRAGMA table_info(${table})`)
+    if (!info.length) {
+      database!.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+      return
+    }
+    const firstResult = info[0]
+    const columns = firstResult.values.map((row) => row[1] as string)
+    if (!columns.includes(column)) {
+      database!.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+    }
+  }
+
+  addColumnIfExists('videos', 'tmdb_id', 'INTEGER DEFAULT NULL')
+  addColumnIfExists('videos', 'media_type', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'title', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'original_title', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'overview', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'poster_path', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'backdrop_path', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'release_date', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'vote_average', 'REAL DEFAULT 0')
+  addColumnIfExists('videos', 'vote_count', 'INTEGER DEFAULT 0')
+  addColumnIfExists('videos', 'genre_ids', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'cast_names', 'TEXT DEFAULT NULL')
+  addColumnIfExists('videos', 'scraped_at', 'TEXT DEFAULT NULL')
+
   database.run(
     `
       INSERT OR IGNORE INTO virtual_folders (id, name, created_at, updated_at)
@@ -395,6 +435,19 @@ export async function getLibrarySnapshot(): Promise<LibrarySnapshot> {
     duration_seconds: number
     modified_at: string
     folder_ids: string
+    tmdb_id: number | null
+    media_type: string | null
+    title: string | null
+    original_title: string | null
+    overview: string | null
+    poster_path: string | null
+    backdrop_path: string | null
+    release_date: string | null
+    vote_average: number | null
+    vote_count: number | null
+    genre_ids: string | null
+    cast_names: string | null
+    scraped_at: string | null
   }>(
     db.exec(`
       SELECT
@@ -404,7 +457,20 @@ export async function getLibrarySnapshot(): Promise<LibrarySnapshot> {
         videos.file_size,
         videos.duration_seconds,
         videos.modified_at,
-        COALESCE(GROUP_CONCAT(virtual_folder_videos.virtual_folder_id), '') AS folder_ids
+        COALESCE(GROUP_CONCAT(virtual_folder_videos.virtual_folder_id), '') AS folder_ids,
+        videos.tmdb_id,
+        videos.media_type,
+        videos.title,
+        videos.original_title,
+        videos.overview,
+        videos.poster_path,
+        videos.backdrop_path,
+        videos.release_date,
+        videos.vote_average,
+        videos.vote_count,
+        videos.genre_ids,
+        videos.cast_names,
+        videos.scraped_at
       FROM videos
       LEFT JOIN virtual_folder_videos
         ON videos.id = virtual_folder_videos.video_id
@@ -422,6 +488,19 @@ export async function getLibrarySnapshot(): Promise<LibrarySnapshot> {
       .split(',')
       .map((value) => Number(value))
       .filter((value) => Number.isFinite(value) && value > 0),
+    tmdbId: video.tmdb_id ? Number(video.tmdb_id) : null,
+    mediaType: video.media_type ?? null,
+    title: video.title ?? null,
+    originalTitle: video.original_title ?? null,
+    overview: video.overview ?? null,
+    posterPath: video.poster_path ?? null,
+    backdropPath: video.backdrop_path ?? null,
+    releaseDate: video.release_date ?? null,
+    voteAverage: Number(video.vote_average || 0),
+    voteCount: Number(video.vote_count || 0),
+    genreIds: video.genre_ids ? JSON.parse(video.genre_ids) : [],
+    castNames: video.cast_names ? JSON.parse(video.cast_names) : [],
+    scrapedAt: video.scraped_at ?? null,
   }))
 
   return {
@@ -562,4 +641,27 @@ export async function scanVideosFromDirectory(
   await persistDatabase(db, meta.databasePath)
 
   return getLibrarySnapshot()
+}
+
+/** 切换到指定路径的数据库 */
+export async function loadDatabaseAtPath(databasePath: string) {
+  const SQL = await loadSqlite()
+
+  try {
+    const existingBuffer = await fs.readFile(databasePath)
+    database = new SQL.Database(new Uint8Array(existingBuffer))
+  } catch {
+    database = new SQL.Database()
+  }
+
+  databaseMeta = {
+    databasePath,
+    tables: TABLES,
+  }
+
+  return getLibrarySnapshot()
+}
+
+export function getCurrentDatabasePath(): string | null {
+  return databaseMeta?.databasePath ?? null
 }

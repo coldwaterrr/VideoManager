@@ -1,18 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Clapperboard,
-  Database,
-  Film,
-  Folder,
-  FolderOpen,
-  FolderPlus,
-  HardDrive,
-  LoaderCircle,
-  ScanSearch,
-  Search,
-} from 'lucide-react'
+import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { TitleBar } from '@/components/TitleBar'
+import { VideoPlayer } from '@/components/VideoPlayer'
 
 type SidebarFolder = {
   id: string
@@ -37,6 +28,8 @@ interface VideoCardProps {
   isMutatingFolder: boolean
   pendingVideoId: number | null
   isPreviewMode: boolean
+  onScrape?: (videoId: number) => void
+  canScrape: boolean
 }
 
 const coverClasses = [
@@ -192,12 +185,13 @@ function getRandomThumbnailTime(duration: number): number {
   return min + Math.random() * (max - min)
 }
 
-function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onToggleFolder, isMutatingFolder, pendingVideoId, isPreviewMode }: VideoCardProps) {
+function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onToggleFolder, isMutatingFolder, pendingVideoId, isPreviewMode, onScrape, canScrape }: VideoCardProps) {
   const [isHovering, setIsHovering] = useState(false)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
   const previewRef = useRef<HTMLVideoElement>(null)
+  const previewTimesRef = useRef<number[]>([])
+  const currentClipRef = useRef(0)
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const thumbnailTimeRef = useRef<number>(1)
 
   // 生成视频封面 - 从随机位置截取
   useEffect(() => {
@@ -208,9 +202,7 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
     
     videoEl.onloadedmetadata = () => {
       // 随机选取封面时间点
-      const randomTime = getRandomThumbnailTime(videoEl.duration)
-      thumbnailTimeRef.current = randomTime
-      videoEl.currentTime = randomTime
+      videoEl.currentTime = getRandomThumbnailTime(videoEl.duration)
     }
     
     videoEl.onseeked = () => {
@@ -239,18 +231,60 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
     }
   }, [video.absolutePath])
 
-  // 悬停预览 - 使用事件委托避免子元素触发 mouseleave
+  // 多段随机预览：生成5个时间点，每段2-3秒
+  // 使用 timeupdate 事件驱动，避免 seek 冲突
+  useEffect(() => {
+    if (!isHovering) {
+      previewTimesRef.current = []
+    }
+  }, [isHovering])
+
+  const startPreview = useCallback((videoEl: HTMLVideoElement) => {
+    const duration = videoEl.duration
+    if (duration <= 0) return
+    const times: number[] = []
+    const min = Math.max(1, duration * 0.1)
+    const max = Math.max(min + 15, duration * 0.9)
+    for (let i = 0; i < 5; i++) {
+      const start = min + (max - min) * (i / 5)
+      times.push(start + Math.random() * 2)
+    }
+    previewTimesRef.current = times
+    currentClipRef.current = 0
+    videoEl.currentTime = times[0]
+    videoEl.play().catch(() => {})
+  }, [])
+
+  const handlePreviewTimeUpdate = useCallback(() => {
+    if (!previewRef.current || !previewTimesRef.current.length) return
+    const video = previewRef.current
+    const times = previewTimesRef.current
+    const clipIndex = currentClipRef.current
+    const startTime = times[clipIndex]
+    const elapsed = video.currentTime - startTime
+
+    if (elapsed >= 3 || video.currentTime < startTime - 0.5) {
+      // 切换到下一段
+      const nextClip = (clipIndex + 1) % times.length
+      currentClipRef.current = nextClip
+      video.currentTime = times[nextClip]
+    }
+  }, [])
+
+  // 悬停预览开始
   const handleMouseEnter = useCallback(() => {
     hoverTimeoutRef.current = setTimeout(() => {
       setIsHovering(true)
-      setTimeout(() => {
-        if (previewRef.current) {
-          previewRef.current.currentTime = 0
-          previewRef.current.play().catch(() => {})
-        }
-      }, 50)
     }, 500)
   }, [])
+
+  // 当 preview video 的 metadata 加载完成时开始播放
+  const handlePreviewLoadedMetadata = useCallback(() => {
+    const videoEl = previewRef.current
+    if (videoEl && isHovering) {
+      startPreview(videoEl)
+    }
+  }, [isHovering, startPreview])
 
   const handleMouseLeave = useCallback(() => {
     if (hoverTimeoutRef.current) {
@@ -258,6 +292,7 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
       hoverTimeoutRef.current = null
     }
     setIsHovering(false)
+    previewTimesRef.current = []
     if (previewRef.current) {
       previewRef.current.pause()
     }
@@ -298,6 +333,17 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
               src={thumbnailUrl}
               alt={video.name}
               className="absolute inset-0 size-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none'
+              }}
+            />
+          )}
+          {(video.posterPath || video.title) && (
+            <img
+              src={video.posterPath ? `https://image.tmdb.org/t/p/w500${video.posterPath}` : undefined}
+              alt={video.title || video.name}
+              className="absolute inset-0 size-full object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
           )}
           
@@ -308,9 +354,10 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
               src={`file:///${video.absolutePath.replace(/\\/g, '/')}`}
               className="absolute inset-0 size-full object-cover"
               muted
-              loop
               playsInline
               preload="auto"
+              onLoadedMetadata={handlePreviewLoadedMetadata}
+              onTimeUpdate={handlePreviewTimeUpdate}
             />
           )}
           
@@ -326,13 +373,56 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
           </div>
         </div>
         <div className="space-y-2">
-          <div className="truncate text-base font-medium text-white">{video.name}</div>
-          <div className="truncate text-sm text-zinc-500">{video.absolutePath}</div>
-          <div className="flex items-center justify-between pt-1 text-sm text-zinc-400">
-            <span>{formatDuration(video.durationSeconds)}</span>
-            <span>{formatBytes(video.fileSize)}</span>
-          </div>
-          <div className="text-xs text-zinc-600">修改时间：{formatTimeLabel(video.modifiedAt)}</div>
+          {video.title ? (
+            <>
+              <div className="flex items-start justify-between gap-2">
+                <div className="truncate text-base font-medium text-white">
+                  {video.title} {video.releaseDate ? `(${video.releaseDate.slice(0, 4)})` : ''}
+                </div>
+                {onScrape && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onScrape(video.id) }}
+                    disabled={!canScrape}
+                    className="shrink-0 rounded-full p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition disabled:opacity-30 disabled:hover:bg-transparent"
+                    title="重新刮削"
+                  >
+                    <FilmIcon className="size-4" />
+                  </button>
+                )}
+              </div>
+              {(video.voteAverage ?? 0) > 0 && (
+                <div className="flex items-center gap-1.5 text-sm text-zinc-400">
+                  <Star className="size-3.5 text-yellow-500" />
+                  <span>{(video.voteAverage ?? 0).toFixed(1)}</span>
+                  <span className="text-zinc-600">({video.voteCount ?? 0} 评分)</span>
+                </div>
+              )}
+              {video.originalTitle && video.originalTitle !== video.title && (
+                <div className="truncate text-xs text-zinc-600">{video.originalTitle}</div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-2">
+                <div className="truncate text-base font-medium text-white">{video.name}</div>
+                {onScrape && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onScrape(video.id) }}
+                    disabled={!canScrape}
+                    className="shrink-0 rounded-full p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition disabled:opacity-30 disabled:hover:bg-transparent"
+                    title="刮削元数据"
+                  >
+                    <FilmIcon className="size-4" />
+                  </button>
+                )}
+              </div>
+              <div className="truncate text-sm text-zinc-500">{video.absolutePath}</div>
+              <div className="flex items-center justify-between pt-1 text-sm text-zinc-400">
+                <span>{formatDuration(video.durationSeconds)}</span>
+                <span>{formatBytes(video.fileSize)}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -396,6 +486,24 @@ function App() {
   // 标签相关状态
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
+
+  // TMDB 相关状态
+  const [tmdbApiKey, setTmdbApiKey] = useState('')
+  const [showTmdbConfig, setShowTmdbConfig] = useState(false)
+  const [isScraping, setIsScraping] = useState(false)
+
+  // 数据库选择相关状态
+  const [showDbSelector, setShowDbSelector] = useState(false)
+  const [availableDatabases, setAvailableDatabases] = useState<Array<{ path: string; size: number }>>([])
+  const [currentDbPath, setCurrentDbPath] = useState<string | null>(null)
+  const [isSwitchingDb, setIsSwitchingDb] = useState(false)
+
+  // 排序
+  const [sortField, setSortField] = useState<'name' | 'size' | 'time'>('time')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+  // 内置播放器状态
+  const [playingVideo, setPlayingVideo] = useState<{ path: string; name: string; index: number } | null>(null)
   
   // 为视频生成标签
   const videosWithTags = useMemo(() => {
@@ -467,6 +575,88 @@ function App() {
     void bootstrap()
   }, [])
 
+  // TMDB 相关函数
+  async function loadTmdbConfig() {
+    if (!window.videosorter) return
+    try {
+      const { apiKey } = await window.videosorter.tmdbGetConfig()
+      setTmdbApiKey(apiKey || '')
+      if (!apiKey) {
+        setShowTmdbConfig(true)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleSaveTmdbConfig() {
+    if (tmdbApiKey.trim().length === 0 || !window.videosorter) return
+    try {
+      await window.videosorter.tmdbSetConfig(tmdbApiKey.trim())
+      setShowTmdbConfig(false)
+      setStatusText('TMDB 配置已保存。')
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : '保存 TMDB 配置失败。')
+    }
+  }
+
+  async function handleScrapeVideo(videoId: number) {
+    if (!window.videosorter || !tmdbApiKey) {
+      setShowTmdbConfig(true)
+      return
+    }
+    const video = snapshot.videos.find((v) => v.id === videoId)
+    if (!video) return
+    setIsScraping(true)
+    setStatusText(`正在刮削: ${video.name}...`)
+    try {
+      const result = await window.videosorter.tmdbScrapeVideo(videoId)
+      const nextSnapshot = await window.videosorter.getLibrarySnapshot()
+      setSnapshot(nextSnapshot)
+      setStatusText(result.message || '刮削完成')
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : '刮削失败。')
+    } finally {
+      setIsScraping(false)
+    }
+  }
+
+  // 数据库相关函数
+  async function handleScanDatabases() {
+    if (!window.videosorter) return
+    try {
+      const databases = await window.videosorter.dbScanForDatabases()
+      setAvailableDatabases(databases)
+      const currentPath = await window.videosorter.dbGetCurrentPath()
+      setCurrentDbPath(currentPath)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleSwitchDatabase(databasePath: string) {
+    if (!window.videosorter) return
+    setIsSwitchingDb(true)
+    try {
+      const nextSnapshot = await window.videosorter.dbSelectDatabase(databasePath)
+      setSnapshot(nextSnapshot)
+      setCurrentDbPath(databasePath)
+      setStatusText(`已切换数据库: ${databasePath.split(/[\\/]/).pop()}`)
+      setShowDbSelector(false)
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : '切换数据库失败。')
+    } finally {
+      setIsSwitchingDb(false)
+    }
+  }
+
+  useEffect(() => {
+    if (window.videosorter) {
+      void loadTmdbConfig()
+      void handleScanDatabases()
+    }
+  }, [])
+
   const filteredVideos = useMemo(() => {
     return videosWithTags.filter((video) => {
       const normalizedKeyword = keyword.trim().toLowerCase()
@@ -504,11 +694,22 @@ function App() {
     })
   }, [activeFolderId, keyword, selectedTag, videosWithTags])
 
-  const totalPages = Math.ceil(filteredVideos.length / pageSize)
+  // 排序
+  const sortedVideos = useMemo(() => {
+    return [...filteredVideos].sort((a, b) => {
+      let result = 0
+      if (sortField === 'name') result = a.name.localeCompare(b.name)
+      else if (sortField === 'size') result = a.fileSize - b.fileSize
+      else result = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime()
+      return sortOrder === 'desc' ? -result : result
+    })
+  }, [filteredVideos, sortField, sortOrder])
+
+  const totalPages = Math.ceil(sortedVideos.length / pageSize)
   const paginatedVideos = useMemo(() => {
     const start = (currentPage - 1) * pageSize
-    return filteredVideos.slice(start, start + pageSize)
-  }, [filteredVideos, currentPage, pageSize])
+    return sortedVideos.slice(start, start + pageSize)
+  }, [sortedVideos, currentPage, pageSize])
 
   // 切换文件夹或搜索时重置到第一页
   useEffect(() => {
@@ -612,12 +813,13 @@ function App() {
     }
   }
 
-  async function handleOpenVideo(filePath: string) {
-    if (!window.videosorter) {
-      setStatusText('浏览器预览模式不支持打开视频。')
-      return
-    }
-    await window.videosorter.openVideo(filePath)
+  function handleOpenVideo(video: VideoRecord) {
+    const playIndex = sortedVideos.findIndex((v) => v.id === video.id)
+    setPlayingVideo({
+      path: video.absolutePath,
+      name: video.title || video.name,
+      index: playIndex >= 0 ? playIndex : 0,
+    })
   }
 
   async function handleCleanupUnsupported() {
@@ -651,10 +853,10 @@ function App() {
   }
 
   function handleSelectAll() {
-    if (selectedVideoIds.size === filteredVideos.length) {
+    if (selectedVideoIds.size === sortedVideos.length) {
       setSelectedVideoIds(new Set())
     } else {
-      setSelectedVideoIds(new Set(filteredVideos.map((v) => v.id)))
+      setSelectedVideoIds(new Set(sortedVideos.map((v) => v.id)))
     }
   }
 
@@ -687,7 +889,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-transparent text-zinc-50">
-      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col px-6 pb-6 pt-5">
+      <TitleBar />
+      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col px-6 pb-6">
         <header className="flex flex-col gap-5 pb-6 pt-2 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.06] text-white shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
@@ -843,6 +1046,30 @@ function App() {
                   清理旧格式记录
                 </Button>
               </div>
+
+              {/* 数据库选择 */}
+              <div className="rounded-[28px] border border-white/8 bg-black/20 p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
+                  <Database className="size-4" />
+                  数据库
+                </div>
+                <div className="mt-2 truncate text-xs text-zinc-500">
+                  {currentDbPath ? `当前: ${currentDbPath.split(/[\\/]/).pop()}` : '加载中...'}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    void handleScanDatabases()
+                    setShowDbSelector(true)
+                  }}
+                  disabled={isPreviewMode}
+                  className="mt-2 w-full text-xs"
+                >
+                  选择数据库
+                </Button>
+              </div>
             </div>
           </aside>
 
@@ -889,6 +1116,27 @@ function App() {
                   >
                     筛选器
                   </Button>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <select
+                        value={sortField}
+                        onChange={(e) => setSortField(e.target.value as 'name' | 'size' | 'time')}
+                        className="h-11 rounded-full border border-white/8 bg-white/[0.04] px-4 pr-8 text-sm text-zinc-300 appearance-none cursor-pointer focus:outline-none focus:border-white/20"
+                      >
+                        <option value="time" className="bg-zinc-900">按时间</option>
+                        <option value="name" className="bg-zinc-900">按名称</option>
+                        <option value="size" className="bg-zinc-900">按大小</option>
+                      </select>
+                      <ArrowUpDown className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500 pointer-events-none" />
+                    </div>
+                    <button
+                      onClick={() => setSortOrder((o) => o === 'asc' ? 'desc' : 'asc')}
+                      className="h-11 w-11 rounded-full border border-white/8 bg-white/[0.04] flex items-center justify-center text-zinc-400 hover:text-white hover:border-white/20 transition"
+                      title={sortOrder === 'asc' ? '升序' : '降序'}
+                    >
+                      {sortOrder === 'asc' ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                    </button>
+                  </div>
                   <Button
                     type="button"
                     onClick={() => void handleScanDirectory()}
@@ -901,6 +1149,16 @@ function App() {
                       <ScanSearch className="mr-2 size-4" />
                     )}
                     扫描目录
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => setShowTmdbConfig(true)}
+                    variant="ghost"
+                    className="size-11 rounded-full p-0"
+                    disabled={isPreviewMode}
+                    title="TMDB 配置"
+                  >
+                    <Settings className="size-5" />
                   </Button>
                 </div>
               </div>
@@ -1007,12 +1265,14 @@ function App() {
                   index={index}
                   isSelected={selectedVideoIds.has(video.id)}
                   onSelect={() => handleToggleSelect(video.id)}
-                  onOpen={() => void handleOpenVideo(video.absolutePath)}
+                  onOpen={() => handleOpenVideo(video)}
                   folders={snapshot.folders}
                   onToggleFolder={(folderId: number) => void handleToggleFolder(video.id, folderId)}
                   isMutatingFolder={isMutatingFolder}
                   pendingVideoId={pendingVideoId}
                   isPreviewMode={isPreviewMode}
+                  onScrape={handleScrapeVideo}
+                  canScrape={!isPreviewMode && tmdbApiKey.length > 0}
                 />
               ))}
             </div>
@@ -1117,9 +1377,173 @@ function App() {
                 </Button>
               </div>
             )}
+
+            {/* 刮削进度 */}
+            {isScraping && (
+              <div className="mt-4 rounded-[24px] border border-white/8 bg-black/30 p-4">
+                <div className="flex items-center gap-2 text-sm text-zinc-300">
+                  <LoaderCircle className="size-4 animate-spin text-emerald-400" />
+                  <span>正在刮削...</span>
+                </div>
+                <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 animate-pulse transition-all duration-300"
+                    style={{ width: '30%' }}
+                  />
+                </div>
+              </div>
+            )}
           </main>
         </div>
       </div>
+
+      {/* TMDB 配置弹窗 */}
+      {showTmdbConfig && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowTmdbConfig(false)}
+          />
+          <div className="relative w-full max-w-md rounded-[32px] border border-white/10 bg-zinc-900 p-8 shadow-2xl">
+            <button
+              onClick={() => setShowTmdbConfig(false)}
+              className="absolute right-4 top-4 rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-white transition"
+            >
+              <X className="size-4" />
+            </button>
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+                <FilmIcon className="size-5" />
+              </div>
+              <div>
+                <div className="text-lg font-medium text-white">TMDB 配置</div>
+                <div className="text-sm text-zinc-500">获取电影和电视剧元数据</div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm text-zinc-400">API Key</label>
+                <Input
+                  value={tmdbApiKey}
+                  onChange={(e) => setTmdbApiKey(e.target.value)}
+                  placeholder="输入你的 TMDB API Key"
+                  className="w-full rounded-xl border-white/10 bg-white/5 text-sm"
+                />
+                <div className="mt-2 text-xs text-zinc-600">
+                  前往{' '}
+                  <span className="text-zinc-400 underline cursor-pointer" onClick={() => window.open('https://www.themoviedb.org/settings/api', '_blank')}>
+                    TMDB 设置页面
+                  </span>
+                  {' '}获取 API Key
+                </div>
+              </div>
+              <Button
+                onClick={() => void handleSaveTmdbConfig()}
+                disabled={tmdbApiKey.trim().length === 0}
+                className="h-11 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                保存配置
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 数据库选择弹窗 */}
+      {showDbSelector && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => !isSwitchingDb && setShowDbSelector(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-[32px] border border-white/10 bg-zinc-900 p-8 shadow-2xl max-h-[80vh] overflow-auto">
+            <button
+              onClick={() => !isSwitchingDb && setShowDbSelector(false)}
+              className="absolute right-4 top-4 rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-white transition"
+            >
+              <X className="size-4" />
+            </button>
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400">
+                <Database className="size-5" />
+              </div>
+              <div>
+                <div className="text-lg font-medium text-white">选择数据库</div>
+                <div className="text-sm text-zinc-500">切换到其他 SQLite 数据库文件</div>
+              </div>
+            </div>
+            {isSwitchingDb ? (
+              <div className="flex items-center justify-center py-8 text-zinc-400">
+                <LoaderCircle className="mr-2 size-5 animate-spin" />
+                正在切换数据库...
+              </div>
+            ) : availableDatabases.length === 0 ? (
+              <div className="py-8 text-center text-zinc-500">
+                未找到数据库文件
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {availableDatabases.map((db) => {
+                  const isCurrent = db.path === currentDbPath
+                  return (
+                    <button
+                      key={db.path}
+                      onClick={() => void handleSwitchDatabase(db.path)}
+                      disabled={isCurrent}
+                      className={`w-full rounded-xl border p-4 text-left transition ${
+                        isCurrent
+                          ? 'border-emerald-500/50 bg-emerald-500/10'
+                          : 'border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 truncate text-sm text-white">
+                          {db.path.split(/[\\/]/).pop()}
+                        </div>
+                        {isCurrent && (
+                          <span className="ml-2 shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-400">
+                            当前
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-zinc-500">
+                        {db.path} · {formatBytes(db.size)}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 内置播放器 */}
+      {playingVideo && (
+        <VideoPlayer
+          filePath={playingVideo.path}
+          videoName={playingVideo.name}
+          onClose={() => setPlayingVideo(null)}
+          onNext={() => {
+            if (playingVideo.index < sortedVideos.length - 1) {
+              const next = sortedVideos[playingVideo.index + 1]
+              setPlayingVideo({ path: next.absolutePath, name: next.title || next.name, index: playingVideo.index + 1 })
+            }
+          }}
+          onPrevious={() => {
+            if (playingVideo.index > 0) {
+              const prev = sortedVideos[playingVideo.index - 1]
+              setPlayingVideo({ path: prev.absolutePath, name: prev.title || prev.name, index: playingVideo.index - 1 })
+            }
+          }}
+          playlist={sortedVideos.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
+          currentIndex={playingVideo.index}
+          onSelectVideo={(index) => {
+            const video = sortedVideos[index]
+            setPlayingVideo({ path: video.absolutePath, name: video.title || video.name, index })
+          }}
+        />
+      )}
     </div>
   )
 }

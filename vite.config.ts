@@ -21,9 +21,8 @@ export default defineConfig({
         entry: 'electron/main.ts',
         // 输出目录
         outDir: 'dist-electron',
-        // 格式：使用 ES 模块
+        // 格式：ES 模块，但需要 __dirname polyfill
         format: 'es',
-        // 配置 Node 内置模块
         nodeIntegration: true,
         contextIsolation: false,
         vite: {
@@ -38,6 +37,8 @@ export default defineConfig({
     {
       name: 'copy-preload',
       closeBundle() {
+        const outDir = path.resolve(__dirname, 'dist-electron');
+        fs.mkdirSync(outDir, { recursive: true });
         const preloadContent = `const { ipcRenderer } = require('electron');
 
 window.videosorter = {
@@ -56,9 +57,33 @@ window.videosorter = {
   openVideo: (filePath) => ipcRenderer.invoke('video:open', filePath),
   getVideoThumbnail: (filePath) => ipcRenderer.invoke('video:get-thumbnail', filePath),
   deleteVideos: (videoIds) => ipcRenderer.invoke('videos:delete', videoIds),
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
+  // TMDB
+  tmdbGetConfig: () => ipcRenderer.invoke('tmdb:get-config'),
+  tmdbSetConfig: (apiKey) => ipcRenderer.invoke('tmdb:set-config', apiKey),
+  tmdbScrapeVideo: (videoId) => ipcRenderer.invoke('tmdb:scrape-video', videoId),
+  tmdbScrapeAll: () => ipcRenderer.invoke('tmdb:scrape-all'),
+  onTMDBScrapeProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on('tmdb:scrape:progress', listener);
+    return () => ipcRenderer.removeListener('tmdb:scrape:progress', listener);
+  },
+  // Database selection
+  dbScanForDatabases: () => ipcRenderer.invoke('db:scan-for-databases'),
+  dbSelectDatabase: (databasePath) => ipcRenderer.invoke('db:select-database', databasePath),
+  dbGetCurrentPath: () => ipcRenderer.invoke('db:get-current-path'),
+};
+
+window.winControls = {
+  minimize: () => ipcRenderer.invoke('win:minimize'),
+  close: () => ipcRenderer.invoke('win:close'),
+  isMaximized: () => ipcRenderer.invoke('win:isMaximized'),
+  maximize: () => ipcRenderer.invoke('win:maximize'),
 };
 `;
-        fs.writeFileSync(path.resolve(__dirname, 'dist-electron/preload.cjs'), preloadContent);
+        fs.writeFileSync(path.resolve(outDir, 'preload.cjs'), preloadContent);
       },
     },
   ],

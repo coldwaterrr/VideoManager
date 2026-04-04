@@ -21,12 +21,15 @@ build-v3
 build
 dist-release
 release-final
+release-v*
 *.blockmap
+*.backup
+*.backup*
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.DS_Store
 .DS_Store
 *.suo
 *.ntvs*

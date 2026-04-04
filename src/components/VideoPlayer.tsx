@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react'
 
 interface VideoPlayerProps {
   filePath: string
@@ -9,9 +9,10 @@ interface VideoPlayerProps {
   onPrevious?: () => void
   playlist?: Array<{ path: string; name: string }>
   currentIndex?: number
+  onSelectVideo?: (index: number) => void
 }
 
-export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, playlist = [], currentIndex = 0 }: VideoPlayerProps) {
+export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, playlist = [], currentIndex = 0, onSelectVideo }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -74,12 +75,18 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
         toggleFullscreen()
       } else if (e.key === 'm') {
         setIsMuted(!isMuted)
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        skipBackward()
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        skipForward()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, isMuted, onNext, onPrevious])
+  }, [onClose, isMuted])
 
   const togglePlay = () => {
     if (videoRef.current) {
@@ -157,6 +164,18 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
     }
   }
 
+  const skipBackward = () => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5)
+    }
+  }
+
+  const skipForward = () => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 5)
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -200,6 +219,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
                     ? 'bg-white/20 text-white'
                     : 'text-zinc-300 hover:bg-white/10'
                 }`}
+                onClick={() => onSelectVideo?.(index)}
               >
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-zinc-500 w-6">{index + 1}</span>
@@ -260,17 +280,26 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
             <button
               onClick={() => onPrevious?.()}
               disabled={currentIndex === 0}
-              className="rounded-full p-2 text-white transition hover:bg-white/20 disabled:opacity-50 disabled:hover:bg-transparent"
-              title="上一个视频 (← 方向键)"
+              className="rounded-full p-2.5 bg-white/10 text-white transition hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
+              title="上一个视频"
             >
-              <ChevronLeft className="size-6" />
+              <ChevronLeft className="size-5" />
             </button>
           )}
+
+          {/* 后退5s */}
+          <button
+            onClick={skipBackward}
+            className="rounded-full p-2.5 text-zinc-300 transition hover:text-white hover:bg-white/10"
+            title="后退5秒"
+          >
+            <SkipBack className="size-5" />
+          </button>
 
           {/* 播放按钮 */}
           <button
             onClick={togglePlay}
-            className="rounded-full p-2 text-white transition hover:bg-white/20"
+            className="rounded-full bg-white p-2 text-zinc-900 transition hover:scale-105"
             title={isPlaying ? '暂停 (空格)' : '播放 (空格)'}
           >
             {isPlaying ? (
@@ -280,15 +309,24 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
             )}
           </button>
 
+          {/* 快进5s */}
+          <button
+            onClick={skipForward}
+            className="rounded-full p-2.5 text-zinc-300 transition hover:text-white hover:bg-white/10"
+            title="快进5秒"
+          >
+            <SkipForward className="size-5" />
+          </button>
+
           {/* 下一个视频按钮 */}
           {playlist.length > 0 && (
             <button
               onClick={() => onNext?.()}
               disabled={currentIndex === playlist.length - 1}
-              className="rounded-full p-2 text-white transition hover:bg-white/20 disabled:opacity-50 disabled:hover:bg-transparent"
-              title="下一个视频 (→ 方向键)"
+              className="rounded-full p-2.5 bg-white/10 text-white transition hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
+              title="下一个视频"
             >
-              <ChevronRight className="size-6" />
+              <ChevronRight className="size-5" />
             </button>
           )}
 
@@ -340,7 +378,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
 
         {/* 快捷键提示 */}
         <div className="mt-2 text-xs text-white/60">
-          空格: 播放/暂停 | M: 静音 | F: 全屏 | Esc: 关闭
+          空格: 播放/暂停 | ←/→: 快退/快进5s | M: 静音 | F: 全屏
         </div>
       </div>
     </div>

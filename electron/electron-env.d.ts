@@ -27,6 +27,20 @@ interface VideoRecord {
   modifiedAt: string
   folderIds: number[]
   tags?: string[]
+  // TMDB metadata
+  tmdbId?: number | null
+  mediaType?: string | null
+  title?: string | null
+  originalTitle?: string | null
+  overview?: string | null
+  posterPath?: string | null
+  backdropPath?: string | null
+  releaseDate?: string | null
+  voteAverage?: number
+  voteCount?: number
+  genreIds?: number[]
+  castNames?: string[]
+  scrapedAt?: string | null
 }
 
 interface LibrarySnapshot {
@@ -68,5 +82,21 @@ interface Window {
     openVideo: (filePath: string) => Promise<{ success: boolean }>
     getVideoThumbnail: (filePath: string) => Promise<{ thumbnail: string | null }>
     deleteVideos: (videoIds: number[]) => Promise<{ deletedCount: number; snapshot: LibrarySnapshot }>
+    // TMDB
+    tmdbGetConfig: () => Promise<{ apiKey: string | null }>
+    tmdbSetConfig: (apiKey: string) => Promise<{ success: boolean }>
+    tmdbScrapeVideo: (videoId: number) => Promise<{ success: boolean; message: string }>
+    tmdbScrapeAll: () => Promise<{ success: boolean; message: string; total: number; scraped: number }>
+    onTMDBScrapeProgress: (callback: (progress: { scraped: number; total: number; success: boolean; message: string }) => void) => () => void
+    // Database selection
+    dbScanForDatabases: () => Promise<Array<{ path: string; size: number }>>
+    dbSelectDatabase: (databasePath: string) => Promise<LibrarySnapshot>
+    dbGetCurrentPath: () => Promise<string | null>
+  }
+  winControls?: {
+    minimize: () => void
+    close: () => void
+    isMaximized: () => boolean
+    maximize: () => void
   }
 }

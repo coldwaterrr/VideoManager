@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(kill %1)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(npm.cmd run:*)",
+      "Bash(handle \"E:/videomanager/release/0.1.0/win-unpacked/resources/app.asar\")",
+      "Bash(powershell -Command 'Get-Process | Where-Object { $_.Modules -ne $null } | ForEach-Object { $proc = $_; try { $_.Modules | Where-Object { $_.FileName -like \"*app.asar*\" } | ForEach-Object { Write-Host \"$\\($proc.Name\\) - PID: $\\($proc.Id\\) - File: $\\($_.FileName\\)\" } } catch {} }')",
+      "Bash(taskkill /F /IM electron.exe)",
+      "Bash(taskkill /F /IM \"YourAppName.exe\")",
+      "Bash(npx asar:*)",
+      "WebSearch",
+      "Bash(pkill -f \"electron\\\\.exe\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(tasklist)",
+      "Bash(taskkill /F /IM electron.exe /T)",
+      "Bash(taskkill /F /IM \"app-builder.exe\" /T)",
+      "Bash(taskkill /F /IM \"electron-builder.exe\" /T)",
+      "Bash(taskkill /F /IM \"node.exe\" /T)",
+      "Bash(handle.exe app.asar)",
+      "Bash(curl -s \"https://api.themoviedb.org/3/search/movie?query=%E9%AA%91%E5%A3%AB&api_key=7a0374457a5a0e572af31c75eee720e0&language=zh-CN\")",
+      "Bash(curl -s \"https://api.themoviedb.org/3/movie/155?api_key=7a0374457a5a0e572af31c75eee720e0&language=zh-CN&append_to_response=credits\")",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s \"https://api.themoviedb.org/3/movie/155?api_key=7a0374457a5a0e572af31c75eee720e0\")",
+      "Bash(curl -s \"https://api.themoviedb.org/3/search/movie?api_key=7a0374457a5a0e572af31c75eee720e0&language=zh-CN&query=%E9%98%BF%E8%AF%BA%E6%8B%89\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('Results:', d.get\\('total_results'\\)\\); [print\\(f'- {r[\\\\\"title\\\\\"]} \\({r[\\\\\"release_date\\\\\"]}\\) id={r[\\\\\"id\\\\\"]} vote={r[\\\\\"vote_average\\\\\"]} votes={r[\\\\\"vote_count\\\\\"]}'\\) for r in d.get\\('results',[]\\)]\")",
+      "Bash(python3 -c ':*)",
+      "Bash(curl -s \"https://api.themoviedb.org/3/search/movie?api_key=7a0374457a5a0e572af31c75eee720e0&language=zh-CN&query=%E9%98%BF%E8%AF%BA%E6%8B%89&year=2024\")",
+      "Bash(node:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

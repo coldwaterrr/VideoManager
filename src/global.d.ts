@@ -11,6 +11,20 @@ interface VideoRecord {
   durationSeconds: number
   modifiedAt: string
   folderIds: number[]
+  // TMDB metadata
+  tmdbId?: number | null
+  mediaType?: string | null
+  title?: string | null
+  originalTitle?: string | null
+  overview?: string | null
+  posterPath?: string | null
+  backdropPath?: string | null
+  releaseDate?: string | null
+  voteAverage?: number
+  voteCount?: number
+  genreIds?: number[]
+  castNames?: string[]
+  scrapedAt?: string | null
 }
 
 interface VirtualFolderRecord {
@@ -41,6 +55,18 @@ interface ScanProgress {
   message?: string
 }
 
+interface TMDBScrapeProgress {
+  scraped: number
+  total: number
+  success: boolean
+  message: string
+}
+
+interface DatabaseInfo {
+  path: string
+  size: number
+}
+
 declare global {
   interface Window {
     videosorter?: {
@@ -57,9 +83,24 @@ declare global {
       minimizeWindow: () => Promise<void>
       maximizeWindow: () => Promise<void>
       closeWindow: () => Promise<void>
+      // TMDB
+      tmdbGetConfig: () => Promise<{ apiKey: string | null }>
+      tmdbSetConfig: (apiKey: string) => Promise<{ success: boolean }>
+      tmdbScrapeVideo: (videoId: number) => Promise<{ success: boolean; message: string }>
+      tmdbScrapeAll: () => Promise<{ success: boolean; message: string; total: number; scraped: number }>
+      onTMDBScrapeProgress: (callback: (progress: TMDBScrapeProgress) => void) => () => void
+      // Database selection
+      dbScanForDatabases: () => Promise<DatabaseInfo[]>
+      dbSelectDatabase: (databasePath: string) => Promise<LibrarySnapshot>
+      dbGetCurrentPath: () => Promise<string | null>
+    }
+    winControls?: {
+      minimize: () => void
+      close: () => void
+      isMaximized: () => boolean
+      maximize: () => void
     }
   }
 }
 
 export {}
-

@@ -5,7 +5,7 @@
   "asar": true,
   "productName": "YourAppName",
   "directories": {
-    "output": "release/${version}"
+    "output": "release-v11/${version}"
   },
   "files": [
     "dist",

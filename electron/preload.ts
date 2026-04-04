@@ -16,4 +16,28 @@ window.videosorter = {
   openVideo: (filePath) => ipcRenderer.invoke('video:open', filePath),
   getVideoThumbnail: (filePath) => ipcRenderer.invoke('video:get-thumbnail', filePath),
   deleteVideos: (videoIds) => ipcRenderer.invoke('videos:delete', videoIds),
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
+  // TMDB
+  tmdbGetConfig: () => ipcRenderer.invoke('tmdb:get-config'),
+  tmdbSetConfig: (apiKey: string) => ipcRenderer.invoke('tmdb:set-config', apiKey),
+  tmdbScrapeVideo: (videoId: number) => ipcRenderer.invoke('tmdb:scrape-video', videoId),
+  tmdbScrapeAll: () => ipcRenderer.invoke('tmdb:scrape-all'),
+  onTMDBScrapeProgress: (callback: (progress: any) => void) => {
+    const listener = (_event: any, progress: any) => callback(progress);
+    ipcRenderer.on('tmdb:scrape:progress', listener);
+    return () => ipcRenderer.removeListener('tmdb:scrape:progress', listener);
+  },
+  // Database selection
+  dbScanForDatabases: () => ipcRenderer.invoke('db:scan-for-databases'),
+  dbSelectDatabase: (databasePath: string) => ipcRenderer.invoke('db:select-database', databasePath),
+  dbGetCurrentPath: () => ipcRenderer.invoke('db:get-current-path'),
+};
+
+window.winControls = {
+  minimize: () => ipcRenderer.invoke('win:minimize'),
+  close: () => ipcRenderer.invoke('win:close'),
+  isMaximized: () => ipcRenderer.invoke('win:isMaximized'),
+  maximize: () => ipcRenderer.invoke('win:maximize'),
 };
