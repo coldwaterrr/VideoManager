@@ -85,6 +85,7 @@ export async function aiClassifyVideosStream(
   const videoList = videos.map((v) => ({
     id: v.id,
     name: v.name,
+    path: v.path,
     title: v.title || null,
     overview: v.overview || null,
   }))
@@ -92,10 +93,10 @@ export async function aiClassifyVideosStream(
   const systemPrompt = `你是一个专业的电影/视频分类助手。请将视频分配到合适的文件夹。
 
 要求：
-1. 每个视频必须属于一个文件夹，不能遗漏
+1. 每个视频必须恰好属于一个文件夹，不能遗漏
 2. 文件夹名使用中文，简洁明了（2-6字）
 3. 返回严格的 JSON 格式，不要输出其他内容
-4. 请根据 TMDB 标题和简介来判断类型（如果有的话），不要仅根据文件名判断
+4. 请综合参考视频的文件名、文件路径、TMDB 标题和简介来综合判断类型
 5. 文件夹名称应该通用化，比如"动作片"而不是"复仇者联盟"`
 
   const userPrompt = `分类规则：${rule}
@@ -109,7 +110,8 @@ ${JSON.stringify(videoList, null, 2)}
 注意：
 - 每个视频 ID 必须恰好出现在一个文件夹中
 - 不要创造空文件夹
-- 如果视频的 TMDB 信息可用，优先使用它来判断`
+- 如果视频的 TMDB 信息可用，优先使用它来判断
+- 结合文件名（name）和文件路径（path）一起判断类别`
 
   try {
     const resp = await fetch(`${config.baseUrl}/chat/completions`, {
