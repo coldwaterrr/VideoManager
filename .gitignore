@@ -12,7 +12,6 @@ dist
 dist-electron
 dist-ssr
 *.local
-release
 .videosorter
 *.tsbuildinfo
 build-final
@@ -21,7 +20,7 @@ build-v3
 build
 dist-release
 release-final
-release-v*
+release/
 *.blockmap
 *.backup
 *.backup*

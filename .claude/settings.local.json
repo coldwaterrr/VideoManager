@@ -32,7 +32,9 @@
       "Bash(python3 -c ':*)",
       "Bash(curl -s \"https://api.themoviedb.org/3/search/movie?api_key=7a0374457a5a0e572af31c75eee720e0&language=zh-CN&query=%E9%98%BF%E8%AF%BA%E6%8B%89&year=2024\")",
       "Bash(node:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
