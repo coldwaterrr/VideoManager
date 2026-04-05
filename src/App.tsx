@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react'
+import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp, Sparkles, Eye, Check, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TitleBar } from '@/components/TitleBar'
@@ -504,6 +504,17 @@ function App() {
 
   // 内置播放器状态
   const [playingVideo, setPlayingVideo] = useState<{ path: string; name: string; index: number } | null>(null)
+
+  // AI 分类相关状态
+  const [showAiClassify, setShowAiClassify] = useState(false)
+  const [aiRule, setAiRule] = useState('')
+  const [aiConfig, setAiConfig] = useState<AIConfig>({ apiKey: '', baseUrl: 'https://openrouter.ai/api/v1', model: 'qwen/qwen3.6-plus:free' })
+  const [aiTestResult, setAiTestResult] = useState<AITestResult | null>(null)
+  const [aiIsTesting, setAiIsTesting] = useState(false)
+  const [aiClassifying, setAiClassifying] = useState(false)
+  const [aiPreview, setAiPreview] = useState<AIClassificationResult | null>(null)
+  const [aiApplying, setAiApplying] = useState(false)
+  const [aiMessage, setAiMessage] = useState('')
   
   // 为视频生成标签
   const videosWithTags = useMemo(() => {
@@ -650,10 +661,77 @@ function App() {
     }
   }
 
+  // AI 分类相关函数
+  async function loadAiConfig() {
+    if (!window.videosorter?.aiGetConfig) return
+    try {
+      const config = await window.videosorter.aiGetConfig()
+      setAiConfig(config)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleAiTest() {
+    if (!window.videosorter?.aiTestConnection) return
+    setAiIsTesting(true)
+    setAiTestResult(null)
+    try {
+      const result = await window.videosorter.aiTestConnection(aiConfig)
+      setAiTestResult(result)
+    } catch {
+      setAiTestResult({ ok: false, message: '连接测试失败' })
+    } finally {
+      setAiIsTesting(false)
+    }
+  }
+
+  async function handleAiClassify() {
+    if (!window.videosorter?.aiClassify) return
+    setAiClassifying(true)
+    setAiMessage('')
+    setAiPreview(null)
+    try {
+      const result = await window.videosorter.aiClassify(aiRule, aiConfig)
+      if (result.success && result.result) {
+        setAiPreview(result.result)
+        setAiMessage(`分类完成，共 ${result.result.folders.length} 个文件夹`)
+      } else {
+        setAiMessage(result.message || '分类失败')
+      }
+    } catch {
+      setAiMessage('分类请求失败')
+    } finally {
+      setAiClassifying(false)
+    }
+  }
+
+  async function handleAiApply() {
+    if (!window.videosorter?.aiApply || !aiPreview) return
+    setAiApplying(true)
+    setAiMessage('正在应用分类结果...')
+    try {
+      const result = await window.videosorter.aiApply(aiPreview.folders)
+      if (result.success) {
+        const nextSnapshot = await window.videosorter.getLibrarySnapshot()
+        setSnapshot(nextSnapshot)
+        setAiMessage(`应用成功！${result.message}`)
+        setStatusText(`AI 分类已应用: ${result.message}`)
+      } else {
+        setAiMessage(result.message)
+      }
+    } catch {
+      setAiMessage('应用分类结果失败')
+    } finally {
+      setAiApplying(false)
+    }
+  }
+
   useEffect(() => {
     if (window.videosorter) {
       void loadTmdbConfig()
       void handleScanDatabases()
+      void loadAiConfig()
     }
   }, [])
 
@@ -1160,6 +1238,16 @@ function App() {
                   >
                     <Settings className="size-5" />
                   </Button>
+                  <Button
+                    type="button"
+                    onClick={() => { setShowAiClassify(true); void loadAiConfig() }}
+                    variant="ghost"
+                    className="size-11 rounded-full p-0"
+                    disabled={isPreviewMode}
+                    title="AI 智能分类"
+                  >
+                    <Sparkles className="size-5" />
+                  </Button>
                 </div>
               </div>
 
@@ -1444,6 +1532,154 @@ function App() {
               >
                 保存配置
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI 智能分类弹窗 */}
+      {showAiClassify && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowAiClassify(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-[32px] border border-white/10 bg-zinc-900 p-8 shadow-2xl max-h-[85vh] flex flex-col">
+            <button
+              onClick={() => setShowAiClassify(false)}
+              className="absolute right-4 top-4 rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-white transition"
+            >
+              <X className="size-4" />
+            </button>
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-violet-500/20 text-violet-400">
+                <Sparkles className="size-5" />
+              </div>
+              <div>
+                <div className="text-lg font-medium text-white">AI 智能分类</div>
+                <div className="text-sm text-zinc-500">自动将未分类视频分配到虚拟文件夹</div>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-4 overflow-auto pr-1">
+              {/* 分类规则 */}
+              <div>
+                <label className="mb-2 block text-sm text-zinc-400">分类规则</label>
+                <textarea
+                  value={aiRule}
+                  onChange={(e) => setAiRule(e.target.value)}
+                  placeholder="例如：按电影类型分成动作片、喜剧片、科幻片等"
+                  className="w-full h-20 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-violet-500/50 resize-none"
+                />
+              </div>
+
+              {/* API 配置 */}
+              <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4 space-y-3">
+                <div>
+                  <label className="mb-1.5 block text-xs text-zinc-500">API Key</label>
+                  <Input
+                    value={aiConfig.apiKey}
+                    onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
+                    placeholder="sk-or-v1-..."
+                    className="w-full rounded-lg border-white/10 bg-white/5 text-xs"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="mb-1.5 block text-xs text-zinc-500">模型</label>
+                    <Input
+                      value={aiConfig.model}
+                      onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
+                      placeholder="qwen/qwen3.6-plus:free"
+                      className="w-full rounded-lg border-white/10 bg-white/5 text-xs"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="mb-1.5 block text-xs text-zinc-500">端点</label>
+                    <Input
+                      value={aiConfig.baseUrl}
+                      onChange={(e) => setAiConfig({ ...aiConfig, baseUrl: e.target.value })}
+                      className="w-full rounded-lg border-white/10 bg-white/5 text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => void handleAiTest()}
+                    disabled={aiIsTesting || !aiConfig.apiKey}
+                    className="h-8 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs"
+                  >
+                    {aiIsTesting ? <LoaderCircle className="mr-1 size-3 animate-spin" /> : null}
+                    测试连接
+                  </Button>
+                  {aiTestResult && (
+                    <span className={`text-xs ${aiTestResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {aiTestResult.ok ? '✓' : '✗'} {aiTestResult.message}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 未分类视频数量 */}
+              <div className="text-xs text-zinc-500">
+                待分类视频: {snapshot.videos.filter((v) => v.folderIds.length === 0).length} 部
+              </div>
+
+              {/* 消息提示 */}
+              {aiMessage && (
+                <div className={`text-xs p-3 rounded-lg ${
+                  aiMessage.includes('成功') || aiMessage.includes('完成') || aiMessage.includes('已应用')
+                    ? 'bg-emerald-500/10 text-emerald-400'
+                    : aiMessage.includes('遗漏')
+                    ? 'bg-amber-500/10 text-amber-400'
+                    : 'bg-red-500/10 text-red-400'
+                }`}>
+                  {aiMessage}
+                </div>
+              )}
+
+              {/* 分类预览 */}
+              {aiPreview && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-zinc-400">
+                    <Eye className="size-3" />
+                    <span>预览分类结果</span>
+                  </div>
+                  <div className="space-y-1 max-h-48 overflow-auto">
+                    {aiPreview.folders.map((folder, idx) => (
+                      <div key={idx} className="rounded-lg border border-white/8 bg-white/[0.03] p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-white">{folder.name}</span>
+                          <span className="text-xs text-zinc-500">{folder.videoIds.length} 部</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="mt-4 flex gap-3 pt-3 border-t border-white/8">
+              {aiPreview ? (
+                <Button
+                  onClick={() => void handleAiApply()}
+                  disabled={aiApplying}
+                  className="flex-1 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  {aiApplying ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Check className="mr-2 size-4" />}
+                  确认并应用
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => void handleAiClassify()}
+                  disabled={aiClassifying || !aiRule || !aiConfig.apiKey}
+                  className="flex-1 h-11 rounded-xl bg-violet-600 hover:bg-violet-500 text-white"
+                >
+                  {aiClassifying ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
+                  预览分类
+                </Button>
+              )}
             </div>
           </div>
         </div>

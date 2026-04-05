@@ -33,6 +33,12 @@ window.videosorter = {
   dbScanForDatabases: () => ipcRenderer.invoke('db:scan-for-databases'),
   dbSelectDatabase: (databasePath: string) => ipcRenderer.invoke('db:select-database', databasePath),
   dbGetCurrentPath: () => ipcRenderer.invoke('db:get-current-path'),
+  // AI Classification
+  aiGetConfig: () => ipcRenderer.invoke('ai:get-config'),
+  aiSaveConfig: (config: { apiKey: string; baseUrl: string; model: string }) => ipcRenderer.invoke('ai:save-config', config),
+  aiTestConnection: (config: { apiKey: string; baseUrl: string; model: string }) => ipcRenderer.invoke('ai:test-connection', config),
+  aiClassify: (rule: string, config: { apiKey: string; baseUrl: string; model: string }) => ipcRenderer.invoke('ai:classify', rule, config),
+  aiApply: (folders: { name: string; videoIds: number[] }[]) => ipcRenderer.invoke('ai:apply', folders),
 };
 
 window.winControls = {

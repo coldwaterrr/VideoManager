@@ -55,6 +55,12 @@ import {
   setTMDBConfig,
   scrapeVideoMetadata,
 } from './tmdb'
+import {
+  loadAIConfig,
+  saveAIConfig,
+  testAIConnection,
+  aiClassifyVideos,
+} from './ai'
 
 let win: BrowserWindow | null
 
@@ -255,6 +261,83 @@ ipcMain.handle('tmdb:scrape-all', async () => {
   }
 
   return { success: true, message: `刮削完成: ${scraped}/${total}`, total, scraped }
+})
+
+// ========== AI 分类 IPC 处理器 ==========
+ipcMain.handle('ai:get-config', async () => {
+  return loadAIConfig()
+})
+
+ipcMain.handle('ai:save-config', async (_event, config: { apiKey: string; baseUrl: string; model: string }) => {
+  await saveAIConfig(config)
+  return { success: true }
+})
+
+ipcMain.handle('ai:test-connection', async (_event, config: { apiKey: string; baseUrl: string; model: string }) => {
+  return testAIConnection(config)
+})
+
+ipcMain.handle('ai:classify', async (_event, rule: string, config: { apiKey: string; baseUrl: string; model: string }) => {
+  await ensureDatabase()
+  const { database: db } = getDatabaseHandle()
+
+  // 获取所有未分类的视频
+  const results = db.exec(`
+    SELECT id, file_name, absolute_path, title, overview
+    FROM videos
+    WHERE id NOT IN (
+      SELECT DISTINCT video_id FROM virtual_folder_videos
+    )
+    ORDER BY file_name
+  `)
+
+  if (!results.length || results[0].values.length === 0) {
+    return { success: false, message: '没有未分类的视频', videos: [] }
+  }
+
+  const videos = results[0].values.map((row: any[]) => ({
+    id: row[0] as number,
+    name: row[1] as string,
+    path: row[2] as string,
+    title: row[3] as string | null,
+    overview: row[4] as string | null,
+  }))
+
+  return aiClassifyVideos(videos, rule, config)
+})
+
+ipcMain.handle('ai:apply', async (_event, folders: { name: string; videoIds: number[] }[]) => {
+  await ensureDatabase()
+  let created = 0
+
+  for (const folder of folders) {
+    // 创建文件夹（如果已存在则复用）
+    const { database: db, databaseMeta: meta } = getDatabaseHandle()
+    const existing = db.exec(`SELECT id FROM virtual_folders WHERE name = ?`, [folder.name])
+    let folderId: number
+
+    if (existing.length && existing[0].values.length > 0) {
+      folderId = existing[0].values[0][0] as number
+    } else {
+      const result = createVirtualFolder(folder.name)
+      folderId = result.folders.find((f: any) => f.name === folder.name)?.id ?? 0
+      if (folderId > 0) created++
+    }
+
+    // 关联视频
+    for (const videoId of folder.videoIds) {
+      try {
+        toggleVideoFolder(videoId, folderId)
+      } catch {
+        // 忽略已关联的错误
+      }
+    }
+  }
+
+  const { database: db, databaseMeta: meta } = getDatabaseHandle()
+  await persistDatabase(db, meta.databasePath)
+
+  return { success: true, message: `创建 ${created} 个文件夹`, snapshot: await getLibrarySnapshot() }
 })
 
 // ========== 数据库选择 IPC 处理器 ==========

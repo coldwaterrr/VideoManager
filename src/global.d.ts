@@ -62,6 +62,32 @@ interface TMDBScrapeProgress {
   message: string
 }
 
+interface AIConfig {
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
+interface AIClassificationFolder {
+  name: string
+  videoIds: number[]
+}
+
+interface AIClassificationResult {
+  folders: AIClassificationFolder[]
+}
+
+interface AITestResult {
+  ok: boolean
+  message: string
+}
+
+interface AIApplyResult {
+  success: boolean
+  message: string
+  snapshot?: LibrarySnapshot
+}
+
 interface DatabaseInfo {
   path: string
   size: number
@@ -93,6 +119,12 @@ declare global {
       dbScanForDatabases: () => Promise<DatabaseInfo[]>
       dbSelectDatabase: (databasePath: string) => Promise<LibrarySnapshot>
       dbGetCurrentPath: () => Promise<string | null>
+      // AI Classification
+      aiGetConfig: () => Promise<AIConfig>
+      aiSaveConfig: (config: AIConfig) => Promise<{ success: boolean }>
+      aiTestConnection: (config: AIConfig) => Promise<AITestResult>
+      aiClassify: (rule: string, config: AIConfig) => Promise<{ success: boolean; message: string; result?: AIClassificationResult }>
+      aiApply: (folders: AIClassificationFolder[]) => Promise<AIApplyResult>
     }
     winControls?: {
       minimize: () => void
