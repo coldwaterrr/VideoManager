@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp, Sparkles, Eye, Check, AlertTriangle } from 'lucide-react'
+import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp, Sparkles, Eye, Check, AlertTriangle, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TitleBar } from '@/components/TitleBar'
@@ -460,6 +460,7 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
 
 function App() {
   const [activeFolderId, setActiveFolderId] = useState('all')
+  const [contextMenuFolder, setContextMenuFolder] = useState<{ id: string; name: string; x: number; y: number } | null>(null)
   const [keyword, setKeyword] = useState('')
   const [newFolderName, setNewFolderName] = useState('')
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
@@ -753,6 +754,10 @@ function App() {
         setSnapshot(nextSnapshot)
         setAiMessage(`应用成功！${result.message}`)
         setStatusText(`AI 分类已应用: ${result.message}`)
+        setAiPreview(null)
+        setAiMessage('')
+        setAiReasoning('')
+        setAiRawContent('')
       } else {
         setAiMessage(result.message)
       }
@@ -918,6 +923,27 @@ function App() {
     }
   }
 
+  async function handleDeleteFolder(folderId: string) {
+    if (!window.videosorter) return
+    setContextMenuFolder(null)
+
+    const folder = sidebarFolders.find((f) => f.id === folderId)
+    if (!folder || folder.system) return
+    if (!window.confirm(`确定删除文件夹"${folder.name}"吗？此操作不可撤销。`)) return
+
+    const id = parseInt(folderId.replace('folder-', ''), 10)
+    try {
+      const nextSnapshot = await window.videosorter.deleteVirtualFolder(id)
+      setSnapshot(nextSnapshot)
+      if (activeFolderId === folderId) {
+        setActiveFolderId('all')
+      }
+      setStatusText(`已删除文件夹"${folder.name}"`)
+    } catch {
+      setStatusText('删除文件夹失败')
+    }
+  }
+
   async function handleCreateFolder() {
     const normalizedName = newFolderName.trim()
 
@@ -1041,7 +1067,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent text-zinc-50">
+    <div className="min-h-screen bg-transparent text-zinc-50" onClick={() => setContextMenuFolder(null)}>
       <TitleBar />
       <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col px-6 pb-6">
         <header className="flex flex-col gap-5 pb-6 pt-2 xl:flex-row xl:items-center xl:justify-between">
@@ -1109,6 +1135,12 @@ function App() {
                     key={folder.id}
                     type="button"
                     onClick={() => setActiveFolderId(folder.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      if (!folder.system) {
+                        setContextMenuFolder({ id: folder.id, name: folder.name, x: e.clientX, y: e.clientY })
+                      }
+                    }}
                     className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition ${
                       isActive
                         ? 'bg-white text-zinc-950 shadow-[0_14px_40px_rgba(255,255,255,0.08)]'
@@ -1891,6 +1923,23 @@ function App() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 文件夹右键菜单 */}
+      {contextMenuFolder && (
+        <div
+          className="fixed z-50 min-w-32 rounded-lg border border-white/10 bg-zinc-800 shadow-xl"
+          style={{ left: contextMenuFolder.x, top: contextMenuFolder.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => void handleDeleteFolder(contextMenuFolder.id)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10"
+          >
+            <Trash2 className="size-4" />
+            删除文件夹
+          </button>
         </div>
       )}
 

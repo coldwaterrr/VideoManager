@@ -537,6 +537,28 @@ export async function createVirtualFolder(name: string) {
   return getLibrarySnapshot()
 }
 
+export async function deleteVirtualFolder(folderId: number) {
+  await ensureDatabase()
+
+  const { database: db, databaseMeta: meta } = getDatabaseHandle()
+
+  // 先删除关联的视频记录
+  db.run(
+    `DELETE FROM virtual_folder_videos WHERE virtual_folder_id = ?;`,
+    [folderId],
+  )
+
+  // 再删除文件夹
+  db.run(
+    `DELETE FROM virtual_folders WHERE id = ?;`,
+    [folderId],
+  )
+
+  await persistDatabase(db, meta.databasePath)
+
+  return getLibrarySnapshot()
+}
+
 export async function toggleVideoFolder(videoId: number, folderId: number) {
   await ensureDatabase()
 

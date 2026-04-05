@@ -4,6 +4,7 @@ window.videosorter = {
   getDatabaseMeta: () => ipcRenderer.invoke('database:get-meta'),
   getLibrarySnapshot: () => ipcRenderer.invoke('library:get-snapshot'),
   createVirtualFolder: (name) => ipcRenderer.invoke('library:create-folder', name),
+  deleteVirtualFolder: (folderId) => ipcRenderer.invoke('library:delete-folder', folderId),
   toggleVideoFolder: (videoId, folderId) =>
     ipcRenderer.invoke('library:toggle-video-folder', videoId, folderId),
   scanDirectory: (filterOptions) => ipcRenderer.invoke('library:scan-directory', filterOptions),

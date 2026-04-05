@@ -39,6 +39,7 @@ process.on('unhandledRejection', (error) => {
 
 import {
   createVirtualFolder,
+  deleteVirtualFolder,
   ensureDatabase,
   getDatabaseHandle,
   getDatabaseMeta,
@@ -114,6 +115,10 @@ ipcMain.handle('library:get-snapshot', async () => {
 
 ipcMain.handle('library:create-folder', async (_event, name: string) => {
   return createVirtualFolder(name)
+})
+
+ipcMain.handle('library:delete-folder', async (_event, folderId: number) => {
+  return deleteVirtualFolder(folderId)
 })
 
 ipcMain.handle('library:toggle-video-folder', async (_event, videoId: number, folderId: number) => {

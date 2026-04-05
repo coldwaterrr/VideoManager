@@ -99,6 +99,7 @@ declare global {
       getDatabaseMeta: () => Promise<DatabaseMeta>
       getLibrarySnapshot: () => Promise<LibrarySnapshot>
       createVirtualFolder: (name: string) => Promise<LibrarySnapshot>
+    deleteVirtualFolder: (folderId: number) => Promise<LibrarySnapshot>
       toggleVideoFolder: (videoId: number, folderId: number) => Promise<LibrarySnapshot>
       scanDirectory: (filterOptions?: ScanFilterOptions) => Promise<{ cancelled: boolean; snapshot: LibrarySnapshot }>
       onScanProgress: (callback: (progress: ScanProgress) => void) => () => void
