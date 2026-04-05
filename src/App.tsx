@@ -517,6 +517,7 @@ function App() {
   const [aiMessage, setAiMessage] = useState('')
   const [aiReasoning, setAiReasoning] = useState('')
   const [aiRawContent, setAiRawContent] = useState('')
+  const [showAiNotification, setShowAiNotification] = useState(false)
   
   // 为视频生成标签
   const videosWithTags = useMemo(() => {
@@ -594,9 +595,6 @@ function App() {
     try {
       const { apiKey } = await window.videosorter.tmdbGetConfig()
       setTmdbApiKey(apiKey || '')
-      if (!apiKey) {
-        setShowTmdbConfig(true)
-      }
     } catch {
       // ignore
     }
@@ -711,7 +709,10 @@ function App() {
       cleanup()
       if (result.success && result.result) {
         setAiPreview(result.result)
-        setAiMessage(`分类完成，共 ${result.result.folders.length} 个文件夹`)
+        // 自动关闭 Dialog，在底部状态栏显示通知
+        setShowAiClassify(false)
+        setShowAiNotification(true)
+        setStatusText(`AI 分类完成，共 ${result.result.folders.length} 个文件夹`)
       } else {
         setAiMessage(result.message || '分类失败')
       }
@@ -744,13 +745,42 @@ function App() {
     }
   }
 
+  // 从底部通知直接应用分类
+  async function handleAiApplyDirect() {
+    if (!window.videosorter?.aiApply || !aiPreview) return
+    try {
+      const result = await window.videosorter.aiApply(aiPreview.folders)
+      if (result.success) {
+        const nextSnapshot = await window.videosorter.getLibrarySnapshot()
+        setSnapshot(nextSnapshot)
+        setStatusText(`AI 分类已应用: ${result.message}`)
+      } else {
+        setStatusText(result.message)
+      }
+    } catch {
+      setStatusText('应用分类结果失败')
+    } finally {
+      setShowAiNotification(false)
+      setAiPreview(null)
+      setAiMessage('')
+      setAiReasoning('')
+      setAiRawContent('')
+    }
+  }
+
   useEffect(() => {
     if (window.videosorter) {
       void loadTmdbConfig()
       void handleScanDatabases()
-      void loadAiConfig()
     }
   }, [])
+
+  // AI 配置在打开面板时才加载
+  useEffect(() => {
+    if (showAiClassify) {
+      void loadAiConfig()
+    }
+  }, [showAiClassify])
 
   const filteredVideos = useMemo(() => {
     return videosWithTags.filter((video) => {
@@ -1355,6 +1385,26 @@ function App() {
                         </div>
                       )}
                     </div>
+                  ) : showAiNotification && aiPreview ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-violet-300">
+                        AI 分类完成，共 {aiPreview.folders.length} 个文件夹
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => void handleAiApplyDirect()}
+                          className="rounded-full bg-violet-600 px-4 py-1 text-xs text-white hover:bg-violet-500 transition"
+                        >
+                          应用分类
+                        </button>
+                        <button
+                          onClick={() => { setShowAiNotification(false); setStatusText('') }}
+                          className="rounded-full border border-white/10 px-4 py-1 text-xs text-zinc-400 hover:text-white transition"
+                        >
+                          关闭
+                        </button>
+                      </div>
+                    </div>
                   ) : (
                     statusText
                   )}
@@ -1555,7 +1605,7 @@ function App() {
       )}
 
       {/* AI 智能分类弹窗 */}
-      {showAiClassify && (
+      {showAiClassify && !showAiNotification && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
