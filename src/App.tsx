@@ -601,7 +601,7 @@ function App() {
   }
 
   async function handleSaveTmdbConfig() {
-    if (tmdbApiKey.trim().length === 0 || !window.videosorter) return
+    if (!window.videosorter) return
     try {
       await window.videosorter.tmdbSetConfig(tmdbApiKey.trim())
       setShowTmdbConfig(false)
@@ -610,6 +610,16 @@ function App() {
       setStatusText(error instanceof Error ? error.message : '保存 TMDB 配置失败。')
     }
   }
+
+  // TMDB 配置变更时自动保存（延迟 1 秒）
+  useEffect(() => {
+    if (tmdbApiKey) {
+      const timer = setTimeout(() => {
+        void window.videosorter?.tmdbSetConfig(tmdbApiKey.trim())
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [tmdbApiKey])
 
   async function handleScrapeVideo(videoId: number) {
     if (!window.videosorter || !tmdbApiKey) {
@@ -667,6 +677,15 @@ function App() {
     try {
       const config = await window.videosorter.aiGetConfig()
       setAiConfig(config)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function saveAiConfigLocal() {
+    if (!window.videosorter?.aiSaveConfig) return
+    try {
+      await window.videosorter.aiSaveConfig(aiConfig)
     } catch {
       // ignore
     }
@@ -781,6 +800,16 @@ function App() {
       void loadAiConfig()
     }
   }, [showAiClassify])
+
+  // AI 配置变更时自动保存（延迟 1 秒避免频繁写入）
+  useEffect(() => {
+    if (aiConfig.apiKey) {
+      const timer = setTimeout(() => {
+        void saveAiConfigLocal()
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [aiConfig.apiKey, aiConfig.baseUrl, aiConfig.model])
 
   const filteredVideos = useMemo(() => {
     return videosWithTags.filter((video) => {
