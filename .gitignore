@@ -35,3 +35,4 @@ release/
 *.njsproj
 *.sln
 *.sw?
+videosorter-backup.sqlite
