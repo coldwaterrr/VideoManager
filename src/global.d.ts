@@ -123,7 +123,8 @@ declare global {
       aiGetConfig: () => Promise<AIConfig>
       aiSaveConfig: (config: AIConfig) => Promise<{ success: boolean }>
       aiTestConnection: (config: AIConfig) => Promise<AITestResult>
-      aiClassify: (rule: string, config: AIConfig) => Promise<{ success: boolean; message: string; result?: AIClassificationResult }>
+      aiClassifyStream: (rule: string, config: AIConfig) => Promise<{ success: boolean; message: string; result?: AIClassificationResult }>
+      onAiChunk: (callback: (chunk: { reasoning?: string; content: string }) => void) => () => void
       aiApply: (folders: AIClassificationFolder[]) => Promise<AIApplyResult>
     }
     winControls?: {

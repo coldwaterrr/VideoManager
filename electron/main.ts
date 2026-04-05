@@ -59,7 +59,7 @@ import {
   loadAIConfig,
   saveAIConfig,
   testAIConnection,
-  aiClassifyVideos,
+  aiClassifyVideosStream,
 } from './ai'
 
 let win: BrowserWindow | null
@@ -277,11 +277,10 @@ ipcMain.handle('ai:test-connection', async (_event, config: { apiKey: string; ba
   return testAIConnection(config)
 })
 
-ipcMain.handle('ai:classify', async (_event, rule: string, config: { apiKey: string; baseUrl: string; model: string }) => {
+ipcMain.handle('ai:classify-stream', async (_event, rule: string, config: { apiKey: string; baseUrl: string; model: string }) => {
   await ensureDatabase()
   const { database: db } = getDatabaseHandle()
 
-  // 获取所有未分类的视频
   const results = db.exec(`
     SELECT id, file_name, absolute_path, title, overview
     FROM videos
@@ -303,7 +302,11 @@ ipcMain.handle('ai:classify', async (_event, rule: string, config: { apiKey: str
     overview: row[4] as string | null,
   }))
 
-  return aiClassifyVideos(videos, rule, config)
+  return aiClassifyVideosStream(videos, rule, config, (chunk) => {
+    if (win) {
+      win.webContents.send('ai:chunk', chunk)
+    }
+  })
 })
 
 ipcMain.handle('ai:apply', async (_event, folders: { name: string; videoIds: number[] }[]) => {

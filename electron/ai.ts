@@ -65,12 +65,12 @@ export async function testAIConnection(config: AIConfig): Promise<{ ok: boolean;
   }
 }
 
-/** 调用 AI 进行视频分类 */
-export async function aiClassifyVideos(
+/** 调用 AI 进行视频分类（流式输出，含推理过程） */
+export async function aiClassifyVideosStream(
   videos: { id: number; name: string; path: string; title?: string | null; overview?: string | null }[],
   rule: string,
   config: AIConfig,
-  onProgress?: (done: number, total: number) => void,
+  onChunk: (chunk: { reasoning?: string; content: string }) => void,
 ): Promise<{ success: boolean; message: string; result?: ClassificationResult }> {
   if (!config.apiKey) {
     return { success: false, message: '请先配置 API Key' }
@@ -118,6 +118,7 @@ ${JSON.stringify(videoList, null, 2)}
         'Content-Type': 'application/json',
         Authorization: `Bearer ${config.apiKey}`,
         'HTTP-Referer': 'https://github.com/coldwaterrr/VideoManager',
+        Accept: 'text/event-stream',
       },
       body: JSON.stringify({
         model: config.model,
@@ -127,6 +128,7 @@ ${JSON.stringify(videoList, null, 2)}
         ],
         max_tokens: 4000,
         temperature: 0.3,
+        stream: true,
       }),
     })
 
@@ -135,16 +137,58 @@ ${JSON.stringify(videoList, null, 2)}
       return { success: false, message: `API 错误 (${resp.status}): ${errText}` }
     }
 
-    const data = await resp.json()
-    const content = data.choices?.[0]?.message?.content
+    if (!resp.body) {
+      return { success: false, message: '响应体为空' }
+    }
 
-    if (!content) {
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let fullReasoning = ''
+    let fullContent = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      // 解析 SSE 行
+      const lines = buffer.split('\n')
+      // 保留最后一个不完整的行
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data:')) continue
+
+        const data = trimmed.slice(5).trim()
+        if (data === '[DONE]') continue
+
+        try {
+          const parsed = JSON.parse(data)
+          const delta = parsed.choices?.[0]?.delta
+
+          if (delta?.reasoning) {
+            fullReasoning += delta.reasoning
+            onChunk({ reasoning: delta.reasoning, content: '' })
+          }
+          if (delta?.content) {
+            fullContent += delta.content
+            onChunk({ content: delta.content })
+          }
+        } catch {
+          // 忽略解析错误（不完整的 JSON）
+        }
+      }
+    }
+
+    if (!fullContent) {
       return { success: false, message: 'AI 返回结果为空' }
     }
 
-    // 尝试解析 JSON（处理可能的 markdown 代码块包裹）
-    let jsonStr = content.trim()
-    // 移除可能的 markdown 代码块
+    // 尝试解析 JSON
+    let jsonStr = fullContent.trim()
     const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/i)
     if (codeBlockMatch) {
       jsonStr = codeBlockMatch[1].trim()
@@ -152,7 +196,6 @@ ${JSON.stringify(videoList, null, 2)}
 
     const result = JSON.parse(jsonStr) as ClassificationResult
 
-    // 验证结果格式
     if (!result.folders || !Array.isArray(result.folders)) {
       return { success: false, message: 'AI 返回的结果格式不正确，缺少 folders 数组' }
     }

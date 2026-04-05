@@ -515,6 +515,8 @@ function App() {
   const [aiPreview, setAiPreview] = useState<AIClassificationResult | null>(null)
   const [aiApplying, setAiApplying] = useState(false)
   const [aiMessage, setAiMessage] = useState('')
+  const [aiReasoning, setAiReasoning] = useState('')
+  const [aiRawContent, setAiRawContent] = useState('')
   
   // 为视频生成标签
   const videosWithTags = useMemo(() => {
@@ -687,12 +689,26 @@ function App() {
   }
 
   async function handleAiClassify() {
-    if (!window.videosorter?.aiClassify) return
+    if (!window.videosorter?.aiClassifyStream) return
     setAiClassifying(true)
     setAiMessage('')
     setAiPreview(null)
+    setAiReasoning('')
+    setAiRawContent('')
+
+    // 监听 AI chunk 流
+    const cleanup = window.videosorter.onAiChunk((chunk) => {
+      if (chunk.reasoning) {
+        setAiReasoning((prev) => prev + chunk.reasoning!)
+      }
+      if (chunk.content) {
+        setAiRawContent((prev) => prev + chunk.content)
+      }
+    })
+
     try {
-      const result = await window.videosorter.aiClassify(aiRule, aiConfig)
+      const result = await window.videosorter.aiClassifyStream(aiRule, aiConfig)
+      cleanup()
       if (result.success && result.result) {
         setAiPreview(result.result)
         setAiMessage(`分类完成，共 ${result.result.folders.length} 个文件夹`)
@@ -700,6 +716,7 @@ function App() {
         setAiMessage(result.message || '分类失败')
       }
     } catch {
+      cleanup()
       setAiMessage('分类请求失败')
     } finally {
       setAiClassifying(false)
@@ -1624,6 +1641,35 @@ function App() {
               <div className="text-xs text-zinc-500">
                 待分类视频: {snapshot.videos.filter((v) => v.folderIds.length === 0).length} 部
               </div>
+
+              {/* 流式输出区域 */}
+              {(aiClassifying || aiReasoning || aiRawContent) && (
+                <div className="rounded-lg border border-white/8 bg-black/20 p-3 max-h-72 overflow-auto">
+                  {aiReasoning && (
+                    <div className="mb-3">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <LoaderCircle className={`size-3 ${aiClassifying ? 'animate-spin' : ''} text-violet-400`} />
+                        <span className="text-xs font-medium text-violet-400">推理过程</span>
+                      </div>
+                      <div className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiReasoning}</div>
+                    </div>
+                  )}
+                  {aiRawContent && (
+                    <div className={aiReasoning ? 'border-t border-white/5 pt-3' : ''}>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-xs font-medium text-emerald-400">分类结果</span>
+                      </div>
+                      <div className="font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiRawContent}</div>
+                    </div>
+                  )}
+                  {!aiReasoning && !aiRawContent && aiClassifying && (
+                    <div className="flex items-center gap-2 text-sm text-zinc-400">
+                      <LoaderCircle className="size-4 animate-spin text-violet-400" />
+                      <span>AI 思考中...</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 消息提示 */}
               {aiMessage && (

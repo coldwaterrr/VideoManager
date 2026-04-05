@@ -37,7 +37,12 @@ window.videosorter = {
   aiGetConfig: () => ipcRenderer.invoke('ai:get-config'),
   aiSaveConfig: (config) => ipcRenderer.invoke('ai:save-config', config),
   aiTestConnection: (config) => ipcRenderer.invoke('ai:test-connection', config),
-  aiClassify: (rule, config) => ipcRenderer.invoke('ai:classify', rule, config),
+  aiClassifyStream: (rule, config) => ipcRenderer.invoke('ai:classify-stream', rule, config),
+  onAiChunk: (callback) => {
+    const listener = (_event, chunk) => callback(chunk);
+    ipcRenderer.on('ai:chunk', listener);
+    return () => ipcRenderer.removeListener('ai:chunk', listener);
+  },
   aiApply: (folders) => ipcRenderer.invoke('ai:apply', folders),
 };
 
