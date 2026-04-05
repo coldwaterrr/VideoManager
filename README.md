@@ -1,7 +1,7 @@
-<h1 align="center">VideoSorter - 本地视频管理器</h1>
+<h1 align="center">VideoManager - 本地视频管理器</h1>
 
 <p align="center">
-  基于 Electron + React + TypeScript 的桌面视频管理工具，支持 TMDB 元数据刮削、虚拟文件夹、悬停预览。
+  基于 Electron + React + TypeScript 的桌面视频管理工具，支持 TMDB 元数据刮削、AI 智能分类、虚拟文件夹、悬停预览。
 </p>
 
 <p align="center">
@@ -24,6 +24,7 @@
 - 🔍 **实时搜索** — 按名称或路径快速过滤，结果支持批量操作
 - 📄 **分页浏览** — 每页 12 个视频，支持跳转首页/末页/上一页/下一页
 - 🗑️ **批量删除** — 勾选复选框或删除当前页全部视频
+- 🤖 **AI 智能分类** — 接入 OpenRouter API（支持 Qwen 等免费模型），输入分类规则后 AI 自动将未分类视频智能分配到虚拟文件夹，支持流式推理展示与可编辑预览
 - 🖥️ **无边框窗口** — 自定义标题栏，支持最小化到系统托盘
 
 ## 🚀 快速开始
@@ -47,7 +48,15 @@ npm run dev
 npm run build
 ```
 
-构建产物位于 `release-v*/` 目录，包含安装包（`.exe`）和便携版（`win-unpacked/`）。
+## 📦 下载
+
+从 [GitHub Releases](https://github.com/coldwaterrr/VideoManager/releases) 获取最新版本：
+
+| 版本 | 说明 |
+|------|------|
+| Setup.exe | NSIS 安装包（推荐） |
+| Portable.exe | 免安装便携版 |
+| x64.zip | 压缩包 |
 
 ## 📖 使用指南
 
@@ -103,6 +112,19 @@ npm run build
 
 </details>
 
+<details>
+<summary><b>✨ AI 智能分类</b></summary>
+
+1. 在设置中配置 OpenRouter API Key 和 Base URL（默认 `https://openrouter.ai/api/v1`）
+2. 点击「测试连接」验证 API 可用性
+3. 进入 AI 分类面板，输入分类规则（如"按题材和年代分类"），点击「开始分类」
+4. AI 将流式输出推理过程与分类方案，你可以审查并修改文件夹名称
+5. 点击「应用」将分类结果写入虚拟文件夹
+
+模型推荐：`qwen/qwen3.6-plus:free`（免费、快速、中文支持好）
+
+</details>
+
 ## 🛠️ 技术栈
 
 | 类别 | 技术 |
@@ -121,8 +143,9 @@ videomanager/
 ├── electron/                      # Electron 主进程
 │   ├── main.ts                   # 入口，IPC 处理器
 │   ├── database.ts               # SQLite 数据库管理
-│   ├── preload.ts                # 预加载脚本
-│   └── tmdb.ts                   # TMDB 元数据刮削
+│   ├── preload.cjs               # 预加载脚本（纯 JS）
+│   ├── tmdb.ts                   # TMDB 元数据刮削
+│   └── ai.ts                     # AI 分类与 OpenRouter API
 ├── src/
 │   ├── App.tsx                   # 主应用
 │   ├── components/
