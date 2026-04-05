@@ -311,33 +311,35 @@ ipcMain.handle('ai:classify-stream', async (_event, rule: string, config: { apiK
 
 ipcMain.handle('ai:apply', async (_event, folders: { name: string; videoIds: number[] }[]) => {
   await ensureDatabase()
+  const { database: db, databaseMeta: meta } = getDatabaseHandle()
   let created = 0
 
   for (const folder of folders) {
-    // 创建文件夹（如果已存在则复用）
-    const { database: db, databaseMeta: meta } = getDatabaseHandle()
     const existing = db.exec(`SELECT id FROM virtual_folders WHERE name = ?`, [folder.name])
     let folderId: number
 
     if (existing.length && existing[0].values.length > 0) {
       folderId = existing[0].values[0][0] as number
     } else {
-      const result = createVirtualFolder(folder.name)
-      folderId = result.folders.find((f: any) => f.name === folder.name)?.id ?? 0
+      const timestamp = new Date().toISOString()
+      db.run(
+        `INSERT INTO virtual_folders (name, created_at, updated_at) VALUES (?, ?, ?)`,
+        [folder.name, timestamp, timestamp],
+      )
+      const newResult = db.exec(`SELECT id FROM virtual_folders WHERE name = ?`, [folder.name])
+      folderId = newResult?.[0]?.values?.[0]?.[0] as number
       if (folderId > 0) created++
     }
 
-    // 关联视频
+    // 直接 INSERT 关联，不用 toggle（避免重复调用导致取消关联）
     for (const videoId of folder.videoIds) {
-      try {
-        toggleVideoFolder(videoId, folderId)
-      } catch {
-        // 忽略已关联的错误
-      }
+      db.run(
+        `INSERT OR IGNORE INTO virtual_folder_videos (virtual_folder_id, video_id, created_at) VALUES (?, ?, ?)`,
+        [folderId, videoId, new Date().toISOString()],
+      )
     }
   }
 
-  const { database: db, databaseMeta: meta } = getDatabaseHandle()
   await persistDatabase(db, meta.databasePath)
 
   return { success: true, message: `创建 ${created} 个文件夹`, snapshot: await getLibrarySnapshot() }
