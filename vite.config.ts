@@ -39,7 +39,7 @@ export default defineConfig({
       closeBundle() {
         const outDir = path.resolve(__dirname, 'dist-electron');
         fs.mkdirSync(outDir, { recursive: true });
-        const preloadContent = fs.readFileSync(path.resolve(__dirname, 'electron/preload.ts'), 'utf-8');
+        const preloadContent = fs.readFileSync(path.resolve(__dirname, 'electron/preload.cjs'), 'utf-8');
         fs.writeFileSync(path.resolve(outDir, 'preload.cjs'), preloadContent);
       },
     },
