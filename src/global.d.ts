@@ -127,6 +127,15 @@ declare global {
       aiClassifyStream: (rule: string, config: AIConfig) => Promise<{ success: boolean; message: string; result?: AIClassificationResult }>
       onAiChunk: (callback: (chunk: { reasoning?: string; content: string }) => void) => () => void
       aiApply: (folders: AIClassificationFolder[]) => Promise<AIApplyResult>
+      // Auto Update
+      updateCheck: () => Promise<{ available?: boolean; message?: string; success?: boolean }>
+      updateDownload: () => Promise<{ success: boolean; message?: string }>
+      updateInstall: () => Promise<{ success: boolean }>
+      onUpdateAvailable: (callback: (info: { version: string; releaseNotes: string }) => void) => () => void
+      onUpdateNotAvailable: (callback: () => void) => () => void
+      onUpdateError: (callback: (msg: string) => void) => () => void
+      onUpdateProgress: (callback: (p: { percent: number }) => void) => () => void
+      onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void
     }
     winControls?: {
       minimize: () => void

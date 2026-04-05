@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Tray, Menu, nativeImage } from 'el
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { autoUpdater } from 'electron-updater'
 
 // userData 路径: 项目根目录下的 .videosorter
 const require = createRequire(import.meta.url)
@@ -408,6 +409,80 @@ ipcMain.handle('db:get-current-path', async () => {
   return getCurrentDatabasePath()
 })
 
+// ========== 自动更新 ==========
+function setupAutoUpdater() {
+  // 仅在生产环境启用自动更新
+  if (!app.isPackaged) {
+    console.log('development: 跳过自动更新')
+    return
+  }
+
+  autoUpdater.logger = console
+  autoUpdater.disableWebInstaller = false
+  autoUpdater.allowPrerelease = false
+  autoUpdater.autoDownload = false
+
+  autoUpdater.on('checking-for-update', () => {
+    win?.webContents.send('update:checking')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    win?.webContents.send('update:available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes || '',
+    })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    win?.webContents.send('update:not-available')
+  })
+
+  autoUpdater.on('error', (err) => {
+    win?.webContents.send('update:error', err.message)
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    win?.webContents.send('update:progress', {
+      percent: progress.percent,
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond,
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    win?.webContents.send('update:downloaded', {
+      version: info.version,
+    })
+  })
+}
+
+ipcMain.handle('update:check', async () => {
+  if (!app.isPackaged) {
+    return { available: false, message: '开发环境不支持自动更新' }
+  }
+  try {
+    await autoUpdater.checkForUpdates()
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, message: err.message }
+  }
+})
+
+ipcMain.handle('update:download', async () => {
+  try {
+    await autoUpdater.downloadUpdate()
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, message: err.message }
+  }
+})
+
+ipcMain.handle('update:install', async () => {
+  autoUpdater.quitAndInstall()
+  return { success: true }
+})
+
 // ========== 窗口控制 ==========
 ipcMain.handle('win:minimize', () => {
   win?.hide()
@@ -509,6 +584,7 @@ app.whenReady().then(async () => {
     createWindow()
     setupWindowBehaviors()
     createTray()
+    setupAutoUpdater()
   } catch (error) {
     if (!win) {
       win = new BrowserWindow({

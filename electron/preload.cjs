@@ -45,6 +45,40 @@ window.videosorter = {
     return () => ipcRenderer.removeListener('ai:chunk', listener);
   },
   aiApply: (folders) => ipcRenderer.invoke('ai:apply', folders),
+  // Auto Update
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.invoke('update:download'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdateChecking: (callback) => {
+    const l = () => callback();
+    ipcRenderer.on('update:checking', l);
+    return () => ipcRenderer.removeListener('update:checking', l);
+  },
+  onUpdateAvailable: (callback) => {
+    const l = (_e, info) => callback(info);
+    ipcRenderer.on('update:available', l);
+    return () => ipcRenderer.removeListener('update:available', l);
+  },
+  onUpdateNotAvailable: (callback) => {
+    const l = () => callback();
+    ipcRenderer.on('update:not-available', l);
+    return () => ipcRenderer.removeListener('update:not-available', l);
+  },
+  onUpdateError: (callback) => {
+    const l = (_e, msg) => callback(msg);
+    ipcRenderer.on('update:error', l);
+    return () => ipcRenderer.removeListener('update:error', l);
+  },
+  onUpdateProgress: (callback) => {
+    const l = (_e, p) => callback(p);
+    ipcRenderer.on('update:progress', l);
+    return () => ipcRenderer.removeListener('update:progress', l);
+  },
+  onUpdateDownloaded: (callback) => {
+    const l = (_e, info) => callback(info);
+    ipcRenderer.on('update:downloaded', l);
+    return () => ipcRenderer.removeListener('update:downloaded', l);
+  },
 };
 
 window.winControls = {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp, Sparkles, Eye, Check, AlertTriangle, Trash2 } from 'lucide-react'
+import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp, Sparkles, Eye, Check, AlertTriangle, Trash2, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TitleBar } from '@/components/TitleBar'
@@ -521,7 +521,13 @@ function App() {
   const [aiExpandedFolders, setAiExpandedFolders] = useState<Set<number>>(new Set())
   const [aiEditingFolderName, setAiEditingFolderName] = useState<number | null>(null)
   const [showAiNotification, setShowAiNotification] = useState(false)
-  
+
+  // 自动更新相关状态
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'>('idle')
+  const [updateVersion, setUpdateVersion] = useState('')
+  const [updateProgress, setUpdateProgress] = useState(0)
+  const [updateError, setUpdateError] = useState('')
   // 为视频生成标签
   const videosWithTags = useMemo(() => {
     const folderMap = new Map<number, string>()
@@ -814,6 +820,55 @@ function App() {
       return () => clearTimeout(timer)
     }
   }, [aiConfig.apiKey, aiConfig.baseUrl, aiConfig.model])
+
+  // 自动更新事件监听
+  useEffect(() => {
+    if (!window.videosorter) return
+    const unsubscribeAvailable = window.videosorter.onUpdateAvailable((info) => {
+      setUpdateStatus('available')
+      setUpdateVersion(info.version)
+    })
+    const unsubscribeNotAvailable = window.videosorter.onUpdateNotAvailable(() => {
+      setUpdateStatus('not-available')
+    })
+    const unsubscribeError = window.videosorter.onUpdateError((msg) => {
+      setUpdateStatus('error')
+      setUpdateError(msg)
+    })
+    const unsubscribeProgress = window.videosorter.onUpdateProgress((p) => {
+      setUpdateProgress(Math.round(p.percent))
+    })
+    const unsubscribeDownloaded = window.videosorter.onUpdateDownloaded((info) => {
+      setUpdateStatus('downloaded')
+      setUpdateVersion(info.version)
+    })
+    return () => {
+      unsubscribeAvailable()
+      unsubscribeNotAvailable()
+      unsubscribeError()
+      unsubscribeProgress()
+      unsubscribeDownloaded()
+    }
+  }, [])
+
+  async function handleCheckUpdate() {
+    setShowUpdateDialog(true)
+    setUpdateStatus('checking')
+    if (!window.videosorter) return
+    await window.videosorter.updateCheck()
+  }
+
+  async function handleDownloadUpdate() {
+    setUpdateStatus('downloading')
+    setUpdateProgress(0)
+    if (!window.videosorter) return
+    await window.videosorter.updateDownload()
+  }
+
+  async function handleInstallUpdate() {
+    if (!window.videosorter) return
+    await window.videosorter.updateInstall()
+  }
 
   const filteredVideos = useMemo(() => {
     return videosWithTags.filter((video) => {
@@ -1355,6 +1410,16 @@ function App() {
                   >
                     <Sparkles className="size-5" />
                   </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void handleCheckUpdate()}
+                    variant="ghost"
+                    className="size-11 rounded-full p-0"
+                    disabled={isPreviewMode}
+                    title="检查更新"
+                  >
+                    <Download className="size-5" />
+                  </Button>
                 </div>
               </div>
 
@@ -1660,6 +1725,103 @@ function App() {
                 保存配置
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 检查更新弹窗 */}
+      {showUpdateDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowUpdateDialog(false)}
+          />
+          <div className="relative w-full max-w-md rounded-[32px] border border-white/10 bg-zinc-900 p-8 shadow-2xl">
+            <button
+              onClick={() => setShowUpdateDialog(false)}
+              className="absolute right-4 top-4 rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-white transition"
+            >
+              <X className="size-4" />
+            </button>
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400">
+                <Download className="size-5" />
+              </div>
+              <div>
+                <div className="text-lg font-medium text-white">检查更新</div>
+                <div className="text-sm text-zinc-500">当前版本 v0.1.0</div>
+              </div>
+            </div>
+
+            {updateStatus === 'checking' && (
+              <div className="flex items-center gap-3 text-sm text-zinc-300 py-4">
+                <LoaderCircle className="size-4 animate-spin text-blue-400" />
+                正在检查更新...
+              </div>
+            )}
+
+            {updateStatus === 'not-available' && (
+              <div className="py-4 text-center text-sm text-zinc-400">
+                当前已是最新版本，无需更新
+              </div>
+            )}
+
+            {updateStatus === 'available' && (
+              <div className="space-y-4 py-2">
+                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-sm text-white">
+                  发现新版本 <span className="font-semibold text-blue-400">v{updateVersion}</span>
+                </div>
+                <Button
+                  onClick={() => void handleDownloadUpdate()}
+                  className="h-11 w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  <Download className="mr-2 size-4" />
+                  下载更新
+                </Button>
+              </div>
+            )}
+
+            {updateStatus === 'downloading' && (
+              <div className="space-y-3 py-2">
+                <div className="flex items-center gap-2 text-sm text-zinc-300">
+                  <LoaderCircle className="size-4 animate-spin text-blue-400" />
+                  正在下载... {updateProgress}%
+                </div>
+                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-300"
+                    style={{ width: `${updateProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {updateStatus === 'downloaded' && (
+              <div className="space-y-4 py-2">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-white">
+                  更新已下载完成，重启应用以安装 <span className="font-semibold text-emerald-400">v{updateVersion}</span>
+                </div>
+                <Button
+                  onClick={() => void handleInstallUpdate()}
+                  className="h-11 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  重启并安装
+                </Button>
+              </div>
+            )}
+
+            {updateStatus === 'error' && (
+              <div className="py-4 text-sm text-red-400">{updateError}</div>
+            )}
+
+            {updateStatus === 'idle' && (
+              <Button
+                onClick={() => void handleCheckUpdate()}
+                className="h-11 w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white"
+              >
+                检查更新
+              </Button>
+            )}
           </div>
         </div>
       )}
