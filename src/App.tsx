@@ -1828,11 +1828,10 @@ function App() {
                                   if (!prev) return prev
                                   const newFolders = [...prev.folders]
                                   newFolders.splice(idx, 1)
-                                  if (newFolders.length === 0) return null
                                   return { ...prev, folders: newFolders }
                                 })
                                 setAiExpandedFolders((prev) => {
-                                  const next = new Set(next)
+                                  const next = new Set(prev)
                                   next.delete(idx)
                                   return next
                                 })
