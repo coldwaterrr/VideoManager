@@ -517,6 +517,8 @@ function App() {
   const [aiMessage, setAiMessage] = useState('')
   const [aiReasoning, setAiReasoning] = useState('')
   const [aiRawContent, setAiRawContent] = useState('')
+  const [aiExpandedFolders, setAiExpandedFolders] = useState<Set<number>>(new Set())
+  const [aiEditingFolderName, setAiEditingFolderName] = useState<number | null>(null)
   const [showAiNotification, setShowAiNotification] = useState(false)
   
   // 为视频生成标签
@@ -728,10 +730,7 @@ function App() {
       cleanup()
       if (result.success && result.result) {
         setAiPreview(result.result)
-        // 自动关闭 Dialog，在底部状态栏显示通知
-        setShowAiClassify(false)
-        setShowAiNotification(true)
-        setStatusText(`AI 分类完成，共 ${result.result.folders.length} 个文件夹`)
+        setAiMessage(`分类完成，共 ${result.result.folders.length} 个文件夹`)
       } else {
         setAiMessage(result.message || '分类失败')
       }
@@ -1763,22 +1762,108 @@ function App() {
                 </div>
               )}
 
-              {/* 分类预览 */}
+              {/* 分类预览 — 可编辑的文件夹列表 */}
               {aiPreview && (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-zinc-400">
-                    <Eye className="size-3" />
-                    <span>预览分类结果</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-zinc-400">
+                      <Eye className="size-3" />
+                      <span>预览分类结果（{aiPreview.folders.length} 个文件夹）</span>
+                    </div>
+                    <span className="text-xs text-zinc-500">共 {aiPreview.folders.reduce((s, f) => s + f.videoIds.length, 0)} 部视频</span>
                   </div>
-                  <div className="space-y-1 max-h-48 overflow-auto">
-                    {aiPreview.folders.map((folder, idx) => (
-                      <div key={idx} className="rounded-lg border border-white/8 bg-white/[0.03] p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-white">{folder.name}</span>
-                          <span className="text-xs text-zinc-500">{folder.videoIds.length} 部</span>
+                  <div className="space-y-2 max-h-60 overflow-auto">
+                    {aiPreview.folders.map((folder, idx) => {
+                      const isExpanded = aiExpandedFolders.has(idx)
+                      const isEditing = aiEditingFolderName === idx
+                      return (
+                        <div key={idx} className="rounded-lg border border-white/8 bg-white/[0.03] overflow-hidden">
+                          {/* 文件夹头部 */}
+                          <div className="flex items-center gap-2 p-3">
+                            <button
+                              onClick={() => {
+                                if (isEditing) return
+                                setAiExpandedFolders((prev) => {
+                                  const next = new Set(prev)
+                                  isExpanded ? next.delete(idx) : next.add(idx)
+                                  return next
+                                })
+                              }}
+                              className="flex items-center gap-1 flex-1 min-w-0"
+                            >
+                              {isExpanded ? <ChevronDown className="size-3.5 text-zinc-400 shrink-0" /> : <ChevronUp className="size-3.5 text-zinc-400 shrink-0" />}
+                              {isEditing ? (
+                                <input
+                                  autoFocus
+                                  value={folder.name}
+                                  onChange={(e) => {
+                                    const newName = e.target.value
+                                    setAiPreview((prev) => {
+                                      if (!prev) return prev
+                                      const newFolders = [...prev.folders]
+                                      newFolders[idx] = { ...newFolders[idx], name: newName }
+                                      return { ...prev, folders: newFolders }
+                                    })
+                                  }}
+                                  onBlur={() => setAiEditingFolderName(null)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') setAiEditingFolderName(null)
+                                    if (e.key === 'Escape') setAiEditingFolderName(null)
+                                  }}
+                                  className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-sm text-white focus:outline-none focus:border-violet-500/50 w-32"
+                                />
+                              ) : (
+                                <span
+                                  onDoubleClick={() => setAiEditingFolderName(idx)}
+                                  className="text-sm font-medium text-white truncate"
+                                >
+                                  {folder.name}
+                                </span>
+                              )}
+                            </button>
+                            <span className="text-xs text-zinc-500 shrink-0">{folder.videoIds.length} 部</span>
+                            <button
+                              onClick={() => {
+                                setAiPreview((prev) => {
+                                  if (!prev) return prev
+                                  const newFolders = [...prev.folders]
+                                  newFolders.splice(idx, 1)
+                                  if (newFolders.length === 0) return null
+                                  return { ...prev, folders: newFolders }
+                                })
+                                setAiExpandedFolders((prev) => {
+                                  const next = new Set(next)
+                                  next.delete(idx)
+                                  return next
+                                })
+                              }}
+                              className="p-0.5 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition"
+                              title="删除此文件夹"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
+                          {/* 展开的视频列表 */}
+                          {isExpanded && (
+                            <div className="border-t border-white/5 px-3 py-2 max-h-40 overflow-auto">
+                              {folder.videoIds.map((vid) => {
+                                const video = snapshot.videos.find((v) => v.id === vid)
+                                return (
+                                  video && (
+                                    <div key={vid} className="text-xs text-zinc-400 truncate py-1">
+                                      {video.title || video.name}
+                                    </div>
+                                  )
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
+                    {aiPreview === null && aiPreview?.folders?.length === 0 && (
+                      <div className="text-xs text-zinc-500 text-center py-4">没有可分类的视频</div>
+                    )}
                   </div>
                 </div>
               )}
