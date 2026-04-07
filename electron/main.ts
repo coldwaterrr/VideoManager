@@ -75,9 +75,9 @@ function createWindow() {
 
     win = new BrowserWindow({
       title: 'VideoSorter',
-      width: 1440,
+      width: 1540,
       height: 920,
-      minWidth: 1180,
+      minWidth: 1280,
       minHeight: 760,
       frame: false,
       icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
