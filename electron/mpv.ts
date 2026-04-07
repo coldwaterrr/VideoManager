@@ -39,21 +39,32 @@ function defaultConfig(): MpvConfig {
 }
 
 export function loadMpvConfig(): MpvConfig {
+  const def = defaultConfig()
   try {
     const configPath = getMpvConfigPath()
     if (fs.existsSync(configPath)) {
       const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-      return { ...defaultConfig(), ...data }
+      const merged = { ...def, ...data }
+      // mpvPath 可能为空字符串，需要回退到默认值
+      if (!merged.mpvPath) {
+        merged.mpvPath = def.mpvPath
+      }
+      return merged
     }
   } catch {
     // ignore
   }
-  return defaultConfig()
+  return def
 }
 
 export function saveMpvConfig(config: MpvConfig): void {
   const configPath = getMpvConfigPath()
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+  const mergedConfig = { ...loadMpvConfig(), ...config }
+  // 不要保存空的 mpvPath
+  if (!mergedConfig.mpvPath) {
+    mergedConfig.mpvPath = defaultConfig().mpvPath
+  }
+  fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2))
 }
 
 export function findMpvExe(mpvDir: string): string | null {
