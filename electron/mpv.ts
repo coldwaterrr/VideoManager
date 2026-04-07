@@ -238,6 +238,12 @@ export function setupMpvIPC() {
 
       await new Promise(resolve => setTimeout(resolve, 500))
 
+      // Show OSD with active settings
+      const shaderName = currentConfig.superResShader === 'none' ? '无' : currentConfig.superResShader.toUpperCase()
+      const interpText = currentConfig.interpolation ? '开' : '关'
+      const osdText = `超分: ${shaderName} | 补帧: ${interpText}`
+      sendMpvCommand(['show-text', osdText, 2000])
+
       return { success: true, socket: socketPath }
     } catch (error) {
       terminateMpv()
