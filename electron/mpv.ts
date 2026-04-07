@@ -97,7 +97,7 @@ function buildShaderArgs(config: MpvConfig): string[] {
       }
     }
   } else if (config.superResShader === 'fsrcnnx') {
-    const shaderPath = path.join(shaderDir, 'FSRCNNX_x2_16-0-4.glsl')
+    const shaderPath = path.join(shaderDir, 'fsrcnnx', 'FSRCNNX_x2_16-0-4-1.glsl')
     if (fs.existsSync(shaderPath)) {
       args.push(`--glsl-shader=${shaderPath}`)
     }
