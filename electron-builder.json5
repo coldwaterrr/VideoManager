@@ -11,6 +11,9 @@
     "dist",
     "dist-electron"
   ],
+  "extraFiles": [
+    "mpv/**"
+  ],
   "mac": {
     "target": [
       "dmg"

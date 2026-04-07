@@ -70,6 +70,14 @@ interface ScanFilterOptions {
   formats?: string[]
 }
 
+interface MpvPlayerConfig {
+  anime4k: boolean
+  interpolation: boolean
+  interpolationFps: number
+  superResShader: 'anime4k' | 'fsrcnnx' | 'none'
+  mpvPath: string
+}
+
 interface Window {
   videosorter?: {
     getDatabaseMeta: () => Promise<DatabaseMeta>
@@ -93,6 +101,31 @@ interface Window {
     dbScanForDatabases: () => Promise<Array<{ path: string; size: number }>>
     dbSelectDatabase: (databasePath: string) => Promise<LibrarySnapshot>
     dbGetCurrentPath: () => Promise<string | null>
+    // AI Classification
+    aiGetConfig: () => Promise<{ apiKey: string; baseUrl: string; model: string }>
+    aiSaveConfig: (config: { apiKey: string; baseUrl: string; model: string }) => Promise<{ success: boolean }>
+    aiTestConnection: (config: { apiKey: string; baseUrl: string; model: string }) => Promise<{ ok: boolean; message: string }>
+    aiClassifyStream: (rule: string, config: { apiKey: string; baseUrl: string; model: string }) => Promise<{ success: boolean; message: string; result?: { folders: Array<{ name: string; videoIds: number[] }> } }>
+    onAiChunk: (callback: (chunk: { reasoning?: string; content: string }) => void) => () => void
+    aiApply: (folders: Array<{ name: string; videoIds: number[] }>) => Promise<{ success: boolean; message: string; snapshot?: LibrarySnapshot }>
+    // MPV Player
+    mpvLaunch: (filePath: string, config?: Partial<MpvPlayerConfig>) => Promise<{ success: boolean; error?: string; socket?: string }>
+    mpvLoadFile: (filePath: string, mode?: string) => Promise<{ success: boolean; error?: string }>
+    mpvCommand: (cmd: unknown[]) => Promise<{ success: boolean; data: unknown }>
+    mpvTerminate: () => Promise<{ success: boolean }>
+    mpvGetConfig: () => Promise<MpvPlayerConfig>
+    mpvSaveConfig: (config: MpvPlayerConfig) => Promise<{ success: boolean }>
+    mpvCheckAvailable: () => Promise<{ available: boolean; path: string }>
+    onMpvEnd: (callback: () => void) => () => void
+    // Auto Update
+    updateCheck: () => Promise<{ available?: boolean; message?: string; success?: boolean }>
+    updateDownload: () => Promise<{ success: boolean; message?: string }>
+    updateInstall: () => Promise<{ success: boolean }>
+    onUpdateAvailable: (callback: (info: { version: string; releaseNotes: string }) => void) => () => void
+    onUpdateNotAvailable: (callback: () => void) => () => void
+    onUpdateError: (callback: (msg: string) => void) => () => void
+    onUpdateProgress: (callback: (p: { percent: number }) => void) => () => void
+    onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void
   }
   winControls?: {
     minimize: () => void

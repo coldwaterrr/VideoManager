@@ -21,9 +21,16 @@ build
 dist-release
 release-final
 release/
+build-release/
 *.blockmap
 *.backup
 *.backup*
+
+# mpv binaries (too large for git, user downloads separately)
+mpv/d3dcompiler_43.dll
+mpv/mpv.com
+mpv/mpv.exe
+mpv/mpv/
 
 # Editor directories and files
 .vscode/*
