@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TitleBar } from '@/components/TitleBar'
 import { VideoPlayer } from '@/components/VideoPlayer'
+import { MpvPlayer } from '@/components/MpvPlayer'
 
 type SidebarFolder = {
   id: string
@@ -506,6 +507,16 @@ function App() {
   // 内置播放器状态
   const [playingVideo, setPlayingVideo] = useState<{ path: string; name: string; index: number } | null>(null)
 
+  // MPV 播放器相关状态
+  const [showMpvConfig, setShowMpvConfig] = useState(false)
+  const [mpvConfigState, setMpvConfigState] = useState({
+    anime4k: false,
+    interpolation: false,
+    interpolationFps: 60,
+    superResShader: 'none' as 'anime4k' | 'fsrcnnx' | 'none',
+    mpvPath: '',
+  })
+
   // AI 分类相关状态
   const [showAiClassify, setShowAiClassify] = useState(false)
   const [aiRule, setAiRule] = useState('')
@@ -677,6 +688,28 @@ function App() {
       setStatusText(error instanceof Error ? error.message : '切换数据库失败。')
     } finally {
       setIsSwitchingDb(false)
+    }
+  }
+
+  // MPV 播放器相关函数
+  async function loadMpvConfig() {
+    if (!window.videosorter?.mpvGetConfig) return
+    try {
+      const config = await window.videosorter.mpvGetConfig()
+      setMpvConfigState(config)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleSaveMpvConfig(updates: { anime4k?: boolean; interpolation?: boolean; interpolationFps?: number; superResShader?: 'anime4k' | 'fsrcnnx' | 'none'; mpvPath?: string }) {
+    if (!window.videosorter?.mpvSaveConfig) return
+    const newConfig = { ...mpvConfigState, ...updates }
+    setMpvConfigState(newConfig)
+    try {
+      await window.videosorter.mpvSaveConfig(newConfig)
+    } catch (error) {
+      console.error('Failed to save mpv config:', error)
     }
   }
 
@@ -1402,6 +1435,19 @@ function App() {
                   </Button>
                   <Button
                     type="button"
+                    onClick={() => { setShowMpvConfig(true); void loadMpvConfig() }}
+                    variant="ghost"
+                    className="size-11 rounded-full p-0"
+                    disabled={isPreviewMode}
+                    title="播放器设置 (mpv)"
+                  >
+                    <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </Button>
+                  <Button
+                    type="button"
                     onClick={() => { setShowAiClassify(true); void loadAiConfig() }}
                     variant="ghost"
                     className="size-11 rounded-full p-0"
@@ -1826,6 +1872,132 @@ function App() {
         </div>
       )}
 
+      {/* MPV 播放器设置弹窗 */}
+      {showMpvConfig && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowMpvConfig(false)}
+          />
+          <div className="relative w-full max-w-md rounded-[32px] border border-white/10 bg-zinc-900 p-8 shadow-2xl">
+            <button
+              onClick={() => setShowMpvConfig(false)}
+              className="absolute right-4 top-4 rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-white transition"
+            >
+              <X className="size-4" />
+            </button>
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
+                <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-lg font-medium text-white">播放器设置</div>
+                <div className="text-sm text-zinc-500">mpv 超分辨率与补帧设置</div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              {/* mpv 路径 */}
+              <div>
+                <label className="mb-2 block text-sm text-zinc-400">mpv 路径</label>
+                <div className="flex gap-2">
+                  <Input
+                    value={mpvConfigState.mpvPath}
+                    onChange={(e) => setMpvConfigState({ ...mpvConfigState, mpvPath: e.target.value })}
+                    placeholder="mpv.exe 所在目录路径"
+                    className="flex-1 rounded-xl border-white/10 bg-white/5 text-sm"
+                  />
+                  <Button
+                    onClick={async () => {
+                      if (!window.videosorter?.mpvCheckAvailable) return
+                      const { available, path } = await window.videosorter.mpvCheckAvailable()
+                      if (available) {
+                        await handleSaveMpvConfig({ mpvPath: path })
+                      }
+                    }}
+                    variant="outline"
+                    className="rounded-xl border-white/10 text-xs text-zinc-300 hover:bg-white/10"
+                  >
+                    检查
+                  </Button>
+                </div>
+                <div className="mt-2 text-xs text-zinc-600">
+                  默认路径: <code className="text-zinc-400">项目根目录/mpv/</code>，内含 mpv.exe 和 shaders/
+                </div>
+              </div>
+
+              {/* Anime4K */}
+              <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-4">
+                <div>
+                  <div className="text-sm text-white">Anime4K 超分辨率</div>
+                  <div className="text-xs text-zinc-500 mt-0.5">锐化动漫线条，提升画质</div>
+                </div>
+                <button
+                  onClick={() => handleSaveMpvConfig({ anime4k: !mpvConfigState.anime4k })}
+                  className={`relative inline-flex h-6 w-11 rounded-full transition ${
+                    mpvConfigState.anime4k ? 'bg-orange-500' : 'bg-zinc-600'
+                  }`}
+                >
+                  <span className={`inline-block size-4 translate-y-1 rounded-full bg-white transition ${
+                    mpvConfigState.anime4k ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+
+              {/* 补帧 */}
+              <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-4">
+                <div>
+                  <div className="text-sm text-white">补帧 (插帧)</div>
+                  <div className="text-xs text-zinc-500 mt-0.5">使视频更流畅，动漫 24→60fps 效果显著</div>
+                </div>
+                <button
+                  onClick={() => handleSaveMpvConfig({ interpolation: !mpvConfigState.interpolation })}
+                  className={`relative inline-flex h-6 w-11 rounded-full transition ${
+                    mpvConfigState.interpolation ? 'bg-orange-500' : 'bg-zinc-600'
+                  }`}
+                >
+                  <span className={`inline-block size-4 translate-y-1 rounded-full bg-white transition ${
+                    mpvConfigState.interpolation ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Shader 选择 */}
+              <div>
+                <label className="mb-2 block text-sm text-zinc-400">超分 Shader</label>
+                <div className="flex gap-2">
+                  {([
+                    { value: 'anime4k', label: 'Anime4K' },
+                    { value: 'fsrcnnx', label: 'FSRCNNX' },
+                    { value: 'none', label: '无' },
+                  ] as const).map((shader) => (
+                    <button
+                      key={shader.value}
+                      onClick={() => handleSaveMpvConfig({ superResShader: shader.value })}
+                      className={`flex-1 rounded-xl px-3 py-2 text-sm transition ${
+                        mpvConfigState.superResShader === shader.value
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+                      }`}
+                    >
+                      {shader.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 提示 */}
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-400">
+                修改设置后需重新打开视频才能生效。超分和补帧对显卡配置有一定要求。
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* AI 智能分类弹窗 */}
       {showAiClassify && !showAiNotification && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -2176,7 +2348,7 @@ function App() {
 
       {/* 内置播放器 */}
       {playingVideo && (
-        <VideoPlayer
+        <MpvPlayer
           filePath={playingVideo.path}
           videoName={playingVideo.name}
           onClose={() => setPlayingVideo(null)}

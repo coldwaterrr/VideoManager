@@ -93,6 +93,14 @@ interface DatabaseInfo {
   size: number
 }
 
+interface MpvConfig {
+  anime4k: boolean
+  interpolation: boolean
+  interpolationFps: number
+  superResShader: 'anime4k' | 'fsrcnnx' | 'none'
+  mpvPath: string
+}
+
 declare global {
   interface Window {
     videosorter?: {
@@ -127,6 +135,15 @@ declare global {
       aiClassifyStream: (rule: string, config: AIConfig) => Promise<{ success: boolean; message: string; result?: AIClassificationResult }>
       onAiChunk: (callback: (chunk: { reasoning?: string; content: string }) => void) => () => void
       aiApply: (folders: AIClassificationFolder[]) => Promise<AIApplyResult>
+      // MPV Player
+      mpvLaunch: (filePath: string, config?: Partial<MpvConfig>) => Promise<{ success: boolean; error?: string; socket?: string }>
+      mpvLoadFile: (filePath: string, mode?: string) => Promise<{ success: boolean; error?: string }>
+      mpvCommand: (cmd: unknown[]) => Promise<{ success: boolean; data: unknown }>
+      mpvTerminate: () => Promise<{ success: boolean }>
+      mpvGetConfig: () => Promise<MpvConfig>
+      mpvSaveConfig: (config: MpvConfig) => Promise<{ success: boolean }>
+      mpvCheckAvailable: () => Promise<{ available: boolean; path: string }>
+      onMpvEnd: (callback: () => void) => () => void
       // Auto Update
       updateCheck: () => Promise<{ available?: boolean; message?: string; success?: boolean }>
       updateDownload: () => Promise<{ success: boolean; message?: string }>

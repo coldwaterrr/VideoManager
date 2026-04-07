@@ -63,6 +63,7 @@ import {
   testAIConnection,
   aiClassifyVideosStream,
 } from './ai'
+import { setupMpvIPC, setMpvWindowRef } from './mpv'
 
 let win: BrowserWindow | null
 
@@ -582,6 +583,8 @@ app.whenReady().then(async () => {
   try {
     await ensureDatabase()
     createWindow()
+    setMpvWindowRef(win)
+    setupMpvIPC()
     setupWindowBehaviors()
     createTray()
     setupAutoUpdater()

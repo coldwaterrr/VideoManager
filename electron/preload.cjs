@@ -45,6 +45,19 @@ window.videosorter = {
     return () => ipcRenderer.removeListener('ai:chunk', listener);
   },
   aiApply: (folders) => ipcRenderer.invoke('ai:apply', folders),
+  // MPV Player
+  mpvLaunch: (filePath, config) => ipcRenderer.invoke('mpv:launch', filePath, config),
+  mpvLoadFile: (filePath, mode) => ipcRenderer.invoke('mpv:loadfile', filePath, mode),
+  mpvCommand: (cmd) => ipcRenderer.invoke('mpv:command', cmd),
+  mpvTerminate: () => ipcRenderer.invoke('mpv:terminate'),
+  mpvGetConfig: () => ipcRenderer.invoke('mpv:get-config'),
+  mpvSaveConfig: (config) => ipcRenderer.invoke('mpv:save-config', config),
+  mpvCheckAvailable: () => ipcRenderer.invoke('mpv:check-available'),
+  onMpvEnd: (callback) => {
+    const l = () => callback()
+    ipcRenderer.on('mpv:ended', l)
+    return () => ipcRenderer.removeListener('mpv:ended', l)
+  },
   // Auto Update
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateDownload: () => ipcRenderer.invoke('update:download'),
