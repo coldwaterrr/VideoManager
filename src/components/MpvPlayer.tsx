@@ -36,6 +36,10 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
       setMpvAvailable(available)
       setMpvPath(path)
     })
+    // 加载已保存的 mpv 配置
+    window.videosorter.mpvGetConfig().then(config => {
+      setMpvConfig(config)
+    })
   }, [])
 
   useEffect(() => {
@@ -90,13 +94,14 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
   }, [onClose])
 
   const handleSaveConfig = useCallback((config: Partial<MpvConfigType>) => {
-    setMpvConfig({ ...mpvConfig, ...config })
-    if (window.videosorter) {
-      window.videosorter.mpvGetConfig().then(existingConfig => {
-        window.videosorter?.mpvSaveConfig({ ...existingConfig, ...config })
-      })
-    }
-  }, [mpvConfig])
+    setMpvConfig(prev => {
+      const newConfig = { ...prev, ...config }
+      if (window.videosorter) {
+        window.videosorter.mpvSaveConfig({ ...(prev as MpvConfigType), ...config })
+      }
+      return newConfig
+    })
+  }, [])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
