@@ -10,6 +10,14 @@ interface MpvConfigType {
   mpvPath: string
 }
 
+const DEFAULT_CONFIG: MpvConfigType = {
+  anime4k: false,
+  interpolation: false,
+  interpolationFps: 60,
+  superResShader: 'none',
+  mpvPath: '',
+}
+
 interface MpvPlayerProps {
   filePath: string
   videoName: string
@@ -27,27 +35,34 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
   const [showPlaylist, setShowPlaylist] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [mpvAvailable, setMpvAvailable] = useState<boolean | null>(null)
-  const [mpvPath, setMpvPath] = useState('')
-  const [mpvConfig, setMpvConfig] = useState<Partial<MpvConfigType> | null>(null)
+  const [mpvConfig, setMpvConfig] = useState<MpvConfigType>(DEFAULT_CONFIG)
+  const mpvReady = useRef(false)
 
+  // 启动时获取 mpv 可用性和已保存的配置
   useEffect(() => {
     if (!window.videosorter) return
     window.videosorter.mpvCheckAvailable().then(({ available, path }) => {
       setMpvAvailable(available)
-      setMpvPath(path)
+      setMpvConfig(prev => ({ ...prev, mpvPath: path }))
     })
-    // 加载已保存的 mpv 配置
     window.videosorter.mpvGetConfig().then(config => {
-      setMpvConfig(config)
+      setMpvConfig(prev => ({ ...prev, ...config }))
     })
   }, [])
 
+  // 配置加载完成后才启动 mpv
   useEffect(() => {
-    let cancelled = false
     if (!window.videosorter || status !== 'launching') return
 
-    window.videosorter.mpvLaunch(filePath, mpvConfig ?? undefined).then(({ success, error }) => {
-      if (cancelled) return
+    const timer = setInterval(() => {
+      if (mpvReady.current) {
+        clearInterval(timer)
+        return
+      }
+    }, 50)
+
+    mpvReady.current = true
+    window.videosorter.mpvLaunch(filePath, mpvConfig).then(({ success, error }) => {
       if (success) {
         setStatus('playing')
       } else {
@@ -56,8 +71,8 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
       }
     })
 
-    return () => { cancelled = true }
-  }, [filePath])
+    return () => { clearInterval(timer); mpvReady.current = false }
+  }, [filePath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!window.videosorter) return
@@ -96,9 +111,7 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
   const handleSaveConfig = useCallback((config: Partial<MpvConfigType>) => {
     setMpvConfig(prev => {
       const newConfig = { ...prev, ...config }
-      if (window.videosorter) {
-        window.videosorter.mpvSaveConfig({ ...(prev as MpvConfigType), ...config })
-      }
+      window.videosorter?.mpvSaveConfig(newConfig)
       return newConfig
     })
   }, [])
@@ -194,21 +207,21 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
               name="Anime4K 超分辨率"
               shortDesc="针对动漫/动画画面的 AI 超分辨率增强，锐化线条并填充细节"
               detail="专为动漫内容设计，可锐化边缘线条、增强色彩和细节。在动漫/动画画面中效果显著，但不建议用于真人影视，可能导致画面过度锐化或失真。修改设置后需重新打开视频。"
-              enabled={!!mpvConfig?.anime4k}
-              onToggle={() => handleSaveConfig({ anime4k: !mpvConfig?.anime4k })}
+              enabled={mpvConfig.anime4k}
+              onToggle={() => handleSaveConfig({ anime4k: !mpvConfig.anime4k })}
             />
             <SettingItem
               name="补帧 (插帧)"
               shortDesc="将低帧率视频插值到高帧率显示，使动画更流畅"
               detail="通过插帧算法将低帧率视频提升到高帧率显示（如 24fps → 60fps），使动作画面更流畅。但在真人影视中可能导致'肥皂效应'(动作过于平滑)、失去电影感，部分人会觉得不自然。修改设置后需重新打开视频。"
-              enabled={!!mpvConfig?.interpolation}
-              onToggle={() => handleSaveConfig({ interpolation: !mpvConfig?.interpolation })}
+              enabled={mpvConfig.interpolation}
+              onToggle={() => handleSaveConfig({ interpolation: !mpvConfig.interpolation })}
             />
             <div className="space-y-2">
               <div className="text-sm text-white">超分 Shader</div>
               <div className="flex gap-1">
                 {(['anime4k', 'fsrcnnx', 'none'] as const).map(shader => (
-                  <button key={shader} onClick={() => handleSaveConfig({ superResShader: shader })} className={`flex-1 rounded px-2 py-1 text-xs transition ${mpvConfig?.superResShader === shader ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}>
+                  <button key={shader} onClick={() => handleSaveConfig({ superResShader: shader })} className={`flex-1 rounded px-2 py-1 text-xs transition ${mpvConfig.superResShader === shader ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}>
                     {shader === 'none' ? '无' : shader.toUpperCase()}
                   </button>
                 ))}
