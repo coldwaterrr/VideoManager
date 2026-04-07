@@ -117,6 +117,9 @@ interface Window {
     mpvSaveConfig: (config: MpvPlayerConfig) => Promise<{ success: boolean }>
     mpvCheckAvailable: () => Promise<{ available: boolean; path: string }>
     onMpvEnd: (callback: () => void) => () => void
+    // Player selection
+    playerGetConfig: () => Promise<{ defaultPlayer: string }>
+    playerSaveConfig: (config: { defaultPlayer: string }) => Promise<{ success: boolean }>
     // Auto Update
     updateCheck: () => Promise<{ available?: boolean; message?: string; success?: boolean }>
     updateDownload: () => Promise<{ success: boolean; message?: string }>

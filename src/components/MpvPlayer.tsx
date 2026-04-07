@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { X, ChevronLeft, ChevronRight, Loader2, Settings } from 'lucide-react'
+import { SettingItem } from './SettingItem'
 
 interface MpvConfigType {
   anime4k: boolean
@@ -178,32 +179,28 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
 
       {/* Settings panel */}
       {showSettings && (
-        <div className="absolute right-20 top-20 z-10 w-72 rounded-lg bg-black/90 backdrop-blur-sm border border-white/10 shadow-xl overflow-hidden">
+        <div className="absolute right-20 top-20 z-10 w-80 rounded-lg bg-black/90 backdrop-blur-sm border border-white/10 shadow-xl overflow-hidden">
           <div className="sticky top-0 bg-black/50 px-4 py-3 border-b border-white/10 flex items-center justify-between">
             <div className="text-sm font-medium text-white">播放器设置</div>
             <button onClick={() => setShowSettings(false)} className="text-zinc-400 hover:text-white"><X className="size-4" /></button>
           </div>
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm text-white">Anime4K 超分辨率</div>
-                <div className="text-xs text-zinc-500">提升动漫画质</div>
-              </div>
-              <button onClick={() => handleSaveConfig({ anime4k: !mpvConfig?.anime4k })} className={`relative inline-flex h-5 w-9 rounded-full transition ${mpvConfig?.anime4k ? 'bg-blue-500' : 'bg-zinc-600'}`}>
-                <span className={`inline-block size-3 translate-y-1 rounded-full bg-white transition ${mpvConfig?.anime4k ? 'translate-x-5' : 'translate-x-1'}`} />
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm text-white">补帧 (插帧)</div>
-                <div className="text-xs text-zinc-500">使视频更流畅</div>
-              </div>
-              <button onClick={() => handleSaveConfig({ interpolation: !mpvConfig?.interpolation })} className={`relative inline-flex h-5 w-9 rounded-full transition ${mpvConfig?.interpolation ? 'bg-blue-500' : 'bg-zinc-600'}`}>
-                <span className={`inline-block size-3 translate-y-1 rounded-full bg-white transition ${mpvConfig?.interpolation ? 'translate-x-5' : 'translate-x-1'}`} />
-              </button>
-            </div>
-            <div>
-              <div className="text-sm text-white mb-1">超分 shader</div>
+          <div className="p-4 space-y-5">
+            <SettingItem
+              name="Anime4K 超分辨率"
+              shortDesc="针对动漫/动画画面的 AI 超分辨率增强，锐化线条并填充细节"
+              detail="专为动漫内容设计，可锐化边缘线条、增强色彩和细节。在动漫/动画画面中效果显著，但不建议用于真人影视，可能导致画面过度锐化或失真。修改设置后需重新打开视频。"
+              enabled={!!mpvConfig?.anime4k}
+              onToggle={() => handleSaveConfig({ anime4k: !mpvConfig?.anime4k })}
+            />
+            <SettingItem
+              name="补帧 (插帧)"
+              shortDesc="将低帧率视频插值到高帧率显示，使动画更流畅"
+              detail="通过插帧算法将低帧率视频提升到高帧率显示（如 24fps → 60fps），使动作画面更流畅。但在真人影视中可能导致'肥皂效应'(动作过于平滑)、失去电影感，部分人会觉得不自然。修改设置后需重新打开视频。"
+              enabled={!!mpvConfig?.interpolation}
+              onToggle={() => handleSaveConfig({ interpolation: !mpvConfig?.interpolation })}
+            />
+            <div className="space-y-2">
+              <div className="text-sm text-white">超分 Shader</div>
               <div className="flex gap-1">
                 {(['anime4k', 'fsrcnnx', 'none'] as const).map(shader => (
                   <button key={shader} onClick={() => handleSaveConfig({ superResShader: shader })} className={`flex-1 rounded px-2 py-1 text-xs transition ${mpvConfig?.superResShader === shader ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}>
@@ -211,8 +208,9 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
                   </button>
                 ))}
               </div>
+              <div className="text-xs text-zinc-500">Anime4K: 适合动漫，锐化边缘 | FSRCNNX: 通用超分辨率，适合写实/真人画面</div>
             </div>
-            <div className="text-xs text-zinc-500 pt-2 border-t border-white/10">修改设置后需重新打开视频</div>
+            <div className="text-xs text-zinc-500 pt-2 border-t border-white/10">修改设置后需重新打开视频。超分和补帧对显卡配置有一定要求。</div>
           </div>
         </div>
       )}

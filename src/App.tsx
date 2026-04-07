@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { TitleBar } from '@/components/TitleBar'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { MpvPlayer } from '@/components/MpvPlayer'
+import { PlayerSelector } from '@/components/PlayerSelector'
 
 type SidebarFolder = {
   id: string
@@ -516,6 +517,20 @@ function App() {
     superResShader: 'none' as 'anime4k' | 'fsrcnnx' | 'none',
     mpvPath: '',
   })
+
+  // 播放器选择
+  const [defaultPlayer, setDefaultPlayer] = useState<'web' | 'mpv' | 'system'>('web')
+
+  useEffect(() => {
+    window.videosorter?.playerGetConfig().then((c) => {
+      if (c?.defaultPlayer) setDefaultPlayer(c.defaultPlayer as 'web' | 'mpv' | 'system')
+    })
+  }, [])
+
+  // 监听 PlayerSelector 组件发来的配置变化
+  const handlePlayerConfigChange = useCallback((player: 'web' | 'mpv' | 'system') => {
+    setDefaultPlayer(player)
+  }, [])
 
   // AI 分类相关状态
   const [showAiClassify, setShowAiClassify] = useState(false)
@@ -1081,6 +1096,10 @@ function App() {
   }
 
   function handleOpenVideo(video: VideoRecord) {
+    if (defaultPlayer === 'system') {
+      window.videosorter?.openVideo(video.absolutePath)
+      return
+    }
     const playIndex = sortedVideos.findIndex((v) => v.id === video.id)
     setPlayingVideo({
       path: video.absolutePath,
@@ -1433,6 +1452,7 @@ function App() {
                   >
                     <Settings className="size-5" />
                   </Button>
+                  <PlayerSelector current={defaultPlayer} onSelect={(p) => setDefaultPlayer(p)} />
                   <Button
                     type="button"
                     onClick={() => { setShowMpvConfig(true); void loadMpvConfig() }}
@@ -2347,7 +2367,34 @@ function App() {
       )}
 
       {/* 内置播放器 */}
-      {playingVideo && (
+      {playingVideo && defaultPlayer === 'web' && (
+        <VideoPlayer
+          filePath={playingVideo.path}
+          videoName={playingVideo.name}
+          onClose={() => setPlayingVideo(null)}
+          onNext={() => {
+            if (playingVideo.index < sortedVideos.length - 1) {
+              const next = sortedVideos[playingVideo.index + 1]
+              setPlayingVideo({ path: next.absolutePath, name: next.title || next.name, index: playingVideo.index + 1 })
+            }
+          }}
+          onPrevious={() => {
+            if (playingVideo.index > 0) {
+              const prev = sortedVideos[playingVideo.index - 1]
+              setPlayingVideo({ path: prev.absolutePath, name: prev.title || prev.name, index: playingVideo.index - 1 })
+            }
+          }}
+          playlist={sortedVideos.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
+          currentIndex={playingVideo.index}
+          onSelectVideo={(index) => {
+            const video = sortedVideos[index]
+            setPlayingVideo({ path: video.absolutePath, name: video.title || video.name, index })
+          }}
+        />
+      )}
+
+      {/* mpv 播放器 */}
+      {playingVideo && defaultPlayer === 'mpv' && (
         <MpvPlayer
           filePath={playingVideo.path}
           videoName={playingVideo.name}

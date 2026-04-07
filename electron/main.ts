@@ -64,6 +64,7 @@ import {
   aiClassifyVideosStream,
 } from './ai'
 import { setupMpvIPC, setMpvWindowRef } from './mpv'
+import { loadPlayerConfig, savePlayerConfig, type PlayerType } from './player-config'
 
 let win: BrowserWindow | null
 
@@ -481,6 +482,14 @@ ipcMain.handle('update:download', async () => {
 
 ipcMain.handle('update:install', async () => {
   autoUpdater.quitAndInstall()
+  return { success: true }
+})
+
+// ========== Player 配置 ==========
+ipcMain.handle('player:get-config', async () => loadPlayerConfig())
+
+ipcMain.handle('player:save-config', async (_event, config: { defaultPlayer: PlayerType }) => {
+  savePlayerConfig(config)
   return { success: true }
 })
 

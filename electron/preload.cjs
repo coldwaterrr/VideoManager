@@ -58,6 +58,9 @@ window.videosorter = {
     ipcRenderer.on('mpv:ended', l)
     return () => ipcRenderer.removeListener('mpv:ended', l)
   },
+  // Player selection
+  playerGetConfig: () => ipcRenderer.invoke('player:get-config'),
+  playerSaveConfig: (config) => ipcRenderer.invoke('player:save-config', config),
   // Auto Update
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateDownload: () => ipcRenderer.invoke('update:download'),
