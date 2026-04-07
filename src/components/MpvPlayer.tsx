@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { X, ChevronLeft, ChevronRight, Loader2, Settings } from 'lucide-react'
 import { SettingItem } from './SettingItem'
 
@@ -36,43 +36,55 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
   const [showSettings, setShowSettings] = useState(false)
   const [mpvAvailable, setMpvAvailable] = useState<boolean | null>(null)
   const [mpvConfig, setMpvConfig] = useState<MpvConfigType>(DEFAULT_CONFIG)
-  const mpvReady = useRef(false)
 
-  // 启动时获取 mpv 可用性和已保存的配置
-  useEffect(() => {
-    if (!window.videosorter) return
-    window.videosorter.mpvCheckAvailable().then(({ available, path }) => {
-      setMpvAvailable(available)
-      setMpvConfig(prev => ({ ...prev, mpvPath: path }))
-    })
-    window.videosorter.mpvGetConfig().then(config => {
-      setMpvConfig(prev => ({ ...prev, ...config }))
-    })
-  }, [])
-
-  // 配置加载完成后才启动 mpv
+  // 加载配置并启动 mpv（合并为单一 effect，避免竞态）
   useEffect(() => {
     if (!window.videosorter || status !== 'launching') return
+    let cancelled = false
 
-    const timer = setInterval(() => {
-      if (mpvReady.current) {
-        clearInterval(timer)
-        return
-      }
-    }, 50)
+    async function launch() {
+      try {
+        // 1. 检查 mpv 可用性
+        const { available, path } = await window.videosorter!.mpvCheckAvailable()
+        if (cancelled) return
+        setMpvAvailable(available)
+        setMpvConfig(prev => ({ ...prev, mpvPath: path }))
 
-    mpvReady.current = true
-    window.videosorter.mpvLaunch(filePath, mpvConfig).then(({ success, error }) => {
-      if (success) {
-        setStatus('playing')
-      } else {
+        // 2. 获取已保存的配置
+        const savedConfig = await window.videosorter!.mpvGetConfig()
+        if (cancelled) return
+
+        // 3. 合并：savedConfig 优先级高于 DEFAULT_CONFIG，mpvPath 必须用 checkAvailable 的结果
+        const mergedConfig = { ...DEFAULT_CONFIG, ...savedConfig, mpvPath: path }
+        setMpvConfig(mergedConfig)
+
+        if (!path) {
+          if (cancelled) return
+          setStatus('error')
+          setErrorMsg('找不到 mpv.exe，请检查 mpv 文件夹路径')
+          return
+        }
+
+        // 4. 启动 mpv
+        const { success, error } = await window.videosorter!.mpvLaunch(filePath, mergedConfig)
+        if (cancelled) return
+        if (success) {
+          setStatus('playing')
+        } else {
+          setStatus('error')
+          setErrorMsg(error || '启动 mpv 失败')
+        }
+      } catch (e) {
+        if (cancelled) return
         setStatus('error')
-        setErrorMsg(error || '启动 mpv 失败')
+        setErrorMsg(`启动 mpv 异常: ${String(e)}`)
       }
-    })
+    }
 
-    return () => { clearInterval(timer); mpvReady.current = false }
-  }, [filePath]) // eslint-disable-line react-hooks/exhaustive-deps
+    launch()
+
+    return () => { cancelled = true }
+  }, [filePath, status])
 
   useEffect(() => {
     if (!window.videosorter) return
@@ -110,7 +122,9 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
 
   const handleSaveConfig = useCallback((config: Partial<MpvConfigType>) => {
     setMpvConfig(prev => {
-      const newConfig = { ...prev, ...config }
+      // 确保 mpvPath 不被空值覆盖
+      const newConfig: MpvConfigType = { ...prev, ...config }
+      if (!newConfig.mpvPath) newConfig.mpvPath = prev.mpvPath
       window.videosorter?.mpvSaveConfig(newConfig)
       return newConfig
     })

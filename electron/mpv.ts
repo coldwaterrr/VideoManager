@@ -58,13 +58,24 @@ export function loadMpvConfig(): MpvConfig {
 }
 
 export function saveMpvConfig(config: MpvConfig): void {
-  const configPath = getMpvConfigPath()
-  const mergedConfig = { ...loadMpvConfig(), ...config }
-  // 不要保存空的 mpvPath
+  const savedConfig = loadMpvConfig()
+  const mergedConfig = { ...savedConfig, ...config }
+  // mpvPath 不能为空，否则用默认值
   if (!mergedConfig.mpvPath) {
     mergedConfig.mpvPath = defaultConfig().mpvPath
   }
-  fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2))
+  const configPath = getMpvConfigPath()
+  console.log('[mpv] saveConfig:', configPath, JSON.stringify(mergedConfig))
+  // 确保目录存在
+  const dir = path.dirname(configPath)
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2))
+  } catch (err) {
+    console.error('[mpv] saveConfig error:', err)
+  }
 }
 
 export function findMpvExe(mpvDir: string): string | null {
@@ -274,9 +285,13 @@ export function setupMpvIPC() {
     return { success: true, data: result }
   })
 
-  ipcMain.handle('mpv:getConfig', async () => loadMpvConfig())
+  ipcMain.handle('mpv:get-config', async () => {
+    const c = loadMpvConfig()
+    console.log('[mpv] getConfig:', JSON.stringify(c))
+    return c
+  })
 
-  ipcMain.handle('mpv:saveConfig', async (_event, config: MpvConfig) => {
+  ipcMain.handle('mpv:save-config', async (_event, config: MpvConfig) => {
     saveMpvConfig(config)
     return { success: true }
   })
