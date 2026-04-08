@@ -14,10 +14,28 @@ if (isDev) {
   process.env.APP_ROOT = path.join(path.dirname(__filename), '..')
   app.setPath('userData', path.join(process.env.APP_ROOT, '.videosorter'))
 } else {
-  // 在打包环境中，userData 放在可执行文件所在目录
-  const exeDir = path.dirname(process.execPath)
-  process.env.APP_ROOT = exeDir
-  app.setPath('userData', path.join(exeDir, '.videosorter'))
+  // 在打包环境中，userData 使用 AppData 目录，避免安装更新时丢失
+  // 格式: C:\Users\Username\AppData\Roaming\VideoManager
+  const newUserDataPath = path.join(app.getPath('appData'), 'VideoManager')
+  app.setPath('userData', newUserDataPath)
+  process.env.APP_ROOT = path.dirname(process.execPath)
+
+  // 迁移旧数据：如果 exeDir/.videosorter 存在，移动到 AppData
+  const oldUserDataPath = path.join(process.env.APP_ROOT, '.videosorter')
+  if (fs.existsSync(oldUserDataPath) && !fs.existsSync(newUserDataPath)) {
+    try {
+      fs.mkdirSync(newUserDataPath, { recursive: true })
+      const items = fs.readdirSync(oldUserDataPath)
+      for (const item of items) {
+        const src = path.join(oldUserDataPath, item)
+        const dest = path.join(newUserDataPath, item)
+        fs.cpSync(src, dest, { recursive: true })
+      }
+      console.log(`[migration] User data migrated from ${oldUserDataPath} to ${newUserDataPath}`)
+    } catch (err) {
+      console.error('[migration] Failed to migrate user data:', err)
+    }
+  }
 }
 
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
