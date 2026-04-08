@@ -20,6 +20,8 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
