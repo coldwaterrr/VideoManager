@@ -59,10 +59,10 @@
     ],
     "artifactName": "${productName}-Linux-${version}.${ext}"
   },
-  "publish": {
-    "provider": "github",
-    "owner": "coldwaterrr",
-    "repo": "VideoManager",
-    "releaseType": "release"
-  }
+  // "publish": {
+  //   "provider": "github",
+  //   "owner": "coldwaterrr",
+  //   "repo": "VideoManager",
+  //   "releaseType": "release"
+  // }
 }
