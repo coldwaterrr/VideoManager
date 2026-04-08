@@ -424,6 +424,13 @@ function setupAutoUpdater() {
   autoUpdater.allowPrerelease = false
   autoUpdater.autoDownload = false
 
+  // 配置 GitHub Releases 作为更新源
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'coldwaterrr',
+    repo: 'VideoManager'
+  })
+
   autoUpdater.on('checking-for-update', () => {
     win?.webContents.send('update:checking')
   })
