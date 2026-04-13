@@ -378,8 +378,10 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
           {video.title ? (
             <>
               <div className="flex items-start justify-between gap-2">
-                <div className="truncate text-base font-medium text-white">
-                  {video.title} {video.releaseDate ? `(${video.releaseDate.slice(0, 4)})` : ''}
+                <div className="flex-1 min-w-0">
+                  <div className="truncate text-base font-medium text-white">
+                    {video.title} {video.releaseDate ? `(${video.releaseDate.slice(0, 4)})` : ''}
+                  </div>
                 </div>
                 {onScrape && (
                   <button
@@ -406,7 +408,9 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
           ) : (
             <>
               <div className="flex items-start justify-between gap-2">
-                <div className="truncate text-base font-medium text-white">{video.name}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate text-base font-medium text-white">{video.name}</div>
+                </div>
                 {onScrape && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onScrape(video.id) }}
@@ -1199,8 +1203,8 @@ function App() {
           </div>
         </header>
 
-        <div className="grid flex-1 grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="flex min-h-[760px] flex-col rounded-[32px] border border-white/6 bg-white/[0.04] p-5 backdrop-blur-2xl">
+        <div className="grid flex-1 grid-cols-1 gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="flex min-h-[760px] flex-col rounded-[32px] border border-white/6 bg-white/[0.04] p-5 backdrop-blur-2xl min-w-[280px]">
             <div className="rounded-[28px] border border-white/8 bg-black/20 p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-medium text-white">资源库状态</div>
@@ -1248,15 +1252,15 @@ function App() {
                         setContextMenuFolder({ id: folder.id, name: folder.name, x: e.clientX, y: e.clientY })
                       }
                     }}
-                    className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition ${
+                    className={`flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition ${
                       isActive
                         ? 'bg-white text-zinc-950 shadow-[0_14px_40px_rgba(255,255,255,0.08)]'
                         : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
                     }`}
                   >
-                    <span className="flex items-center gap-3">
-                      <Icon className="size-4" />
-                      <span className="text-sm font-medium">{folder.name}</span>
+                    <span className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
+                      <Icon className="size-4 shrink-0" />
+                      <span className="font-medium truncate text-sm">{folder.name}</span>
                     </span>
                     <span className="text-xs text-zinc-500">{folder.count}</span>
                   </button>

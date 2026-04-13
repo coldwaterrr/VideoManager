@@ -289,3 +289,48 @@ npm run typecheck
 - 最新版本: `release-v8/0.1.0/`
 - 安装包: `release-v8/0.1.0/YourAppName-Windows-0.1.0-Setup.exe`
 - 便携版: `release-v8/0.1.0/win-unpacked/YourAppName.exe`
+
+---
+
+## 打包构建问题记录（2026-04-13）- v0.2.2
+
+### 修复清单
+
+| # | 错误 | 原因 | 修复 | 文件 |
+|---|------|------|------|------|
+| 6 | `找不到ffmpeg.dll` | `electron-builder.json5` 配置文件中存在**重复的 `win` 配置块**，后面的配置覆盖了前面的 `extraFiles` 配置 | 删除重复的 `win` 配置块，只保留包含 `extraFiles` 的配置 | `electron-builder.json5` |
+| 7 | 文字溢出换行 | 侧边栏文件夹按钮和视频卡片的文本容器没有正确的宽度限制 | 1. 侧边栏宽度改为 `min(320px,25vw)` 自适应<br>2. 文本添加 `flex-1 min-w-0` 和 `truncate`<br>3. 使用 `clamp(0.8rem,2vw,1rem)` 实现响应式文字大小 | `src/App.tsx` |
+
+### 重要提示
+
+**⚠️ 避免配置重复键名**
+
+JSON/JSON5 格式中，**后面的同名键会覆盖前面的键**。在 `electron-builder.json5` 中：
+
+```json5
+// ❌ 错误示例 - 后面的 win 会覆盖前面的
+{
+  "win": {
+    "extraFiles": [{ "from": "...", "filter": ["ffmpeg.dll"] }]
+  },
+  // ... 其他配置 ...
+  "win": {
+    // 这个配置会完全覆盖上面的配置！
+  }
+}
+
+// ✅ 正确示例 - 合并到一个配置中
+{
+  "win": {
+    "target": [...],
+    "extraFiles": [{ "from": "...", "filter": ["ffmpeg.dll"] }]
+  }
+}
+```
+
+### 构建输出目录
+
+- 最新版本: `dist-build/0.2.2/`
+- 安装包: `dist-build/0.2.2/VideoManager-Windows-0.2.2-Setup.exe`
+- 便携版: `dist-build/0.2.2/win-unpacked/VideoManager.exe`
+- 压缩包: `dist-build/0.2.2/VideoManager-Windows-0.2.2-x64.zip`

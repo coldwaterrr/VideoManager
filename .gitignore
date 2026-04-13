@@ -22,6 +22,7 @@ dist-release
 release-final
 release/
 build-release/
+dist-build/
 *.blockmap
 *.backup
 *.backup*

@@ -5,7 +5,7 @@
   "asar": true,
   "productName": "VideoManager",
   "directories": {
-    "output": "build-release/${version}"
+    "output": "release/${version}"
   },
   "files": [
     "dist",
@@ -41,7 +41,14 @@
         ]
       }
     ],
-    "artifactName": "${productName}-Windows-${version}-${arch}.${ext}"
+    "artifactName": "${productName}-Windows-${version}-${arch}.${ext}",
+    "extraFiles": [
+      {
+        "from": "node_modules/electron/dist",
+        "to": ".",
+        "filter": ["ffmpeg.dll"]
+      }
+    ]
   },
   "nsis": {
     "oneClick": false,
