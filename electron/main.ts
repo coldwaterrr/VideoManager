@@ -290,6 +290,56 @@ ipcMain.handle('tmdb:scrape-all', async () => {
   return { success: true, message: `刮削完成: ${scraped}/${total}`, total, scraped }
 })
 
+ipcMain.handle('tmdb:manual-search', async (_event, query: string) => {
+  await ensureDatabase()
+  const config = await getTMDBConfig()
+  if (!config.apiKey) {
+    return []
+  }
+
+  const url = `https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(query)}&include_adult=false&language=zh-CN&api_key=${config.apiKey}`
+  const resp = await fetch(url)
+  if (!resp.ok) {
+    return []
+  }
+  const data = await resp.json()
+  return (data.results || []).filter((r: any) => r.media_type === 'movie' || r.media_type === 'tv').slice(0, 10)
+})
+
+ipcMain.handle('tmdb:manual-scrape', async (_event, videoId: number, result: any) => {
+  await ensureDatabase()
+  const { database: db, databaseMeta: meta } = getDatabaseHandle()
+  const now = new Date().toISOString()
+
+  db.run(
+    `UPDATE videos SET
+      tmdb_id = ?, media_type = ?, title = ?, original_title = ?,
+      overview = ?, poster_path = ?, backdrop_path = ?, release_date = ?,
+      vote_average = ?, vote_count = ?, genre_ids = ?, cast_names = ?,
+      scraped_at = ?
+     WHERE id = ?`,
+    [
+      result.id,
+      result.media_type,
+      result.title || result.name,
+      result.original_title || result.original_name,
+      result.overview,
+      result.poster_path,
+      result.backdrop_path,
+      result.release_date || result.first_air_date,
+      result.vote_average || 0,
+      result.vote_count || 0,
+      JSON.stringify(result.genre_ids || []),
+      '[]',
+      now,
+      videoId,
+    ],
+  )
+
+  await persistDatabase(db, meta.databasePath)
+  return { success: true, message: `${result.title || result.name} 刮削成功` }
+})
+
 // ========== AI 分类 IPC 处理器 ==========
 ipcMain.handle('ai:get-config', async () => {
   return loadAIConfig()

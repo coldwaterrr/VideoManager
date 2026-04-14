@@ -499,6 +499,14 @@ function App() {
   const [showTmdbConfig, setShowTmdbConfig] = useState(false)
   const [isScraping, setIsScraping] = useState(false)
 
+  // 手动刮削相关状态
+  const [showManualScrape, setShowManualScrape] = useState(false)
+  const [manualScrapeVideoId, setManualScrapeVideoId] = useState<number | null>(null)
+  const [manualScrapeQuery, setManualScrapeQuery] = useState('')
+  const [manualScrapeResults, setManualScrapeResults] = useState<any[]>([])
+  const [manualScrapeLoading, setManualScrapeLoading] = useState(false)
+  const [manualScrapeSearching, setManualScrapeSearching] = useState(false)
+
   // 数据库选择相关状态
   const [showDbSelector, setShowDbSelector] = useState(false)
   const [availableDatabases, setAvailableDatabases] = useState<Array<{ path: string; size: number }>>([])
@@ -674,10 +682,48 @@ function App() {
       const nextSnapshot = await window.videosorter.getLibrarySnapshot()
       setSnapshot(nextSnapshot)
       setStatusText(result.message || '刮削完成')
+      if (!result.success && result.message === '未找到匹配的影视信息') {
+        setManualScrapeVideoId(videoId)
+        setManualScrapeQuery(video.name.replace(/\.[^/.]+$/, ''))
+        setManualScrapeResults([])
+        setShowManualScrape(true)
+      }
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : '刮削失败。')
     } finally {
       setIsScraping(false)
+    }
+  }
+
+  async function handleManualScrapeSearch() {
+    if (!manualScrapeQuery.trim() || !window.videosorter) return
+    setManualScrapeSearching(true)
+    setManualScrapeResults([])
+    try {
+      const results = await window.videosorter.tmdbManualSearch(manualScrapeQuery.trim())
+      setManualScrapeResults(results)
+    } catch {
+      setManualScrapeResults([])
+    } finally {
+      setManualScrapeSearching(false)
+    }
+  }
+
+  async function handleManualScrapeSelect(result: any) {
+    if (!window.videosorter || !manualScrapeVideoId) return
+    setManualScrapeLoading(true)
+    try {
+      const updateResult = await window.videosorter.tmdbManualScrape(manualScrapeVideoId, result)
+      if (updateResult.success) {
+        const nextSnapshot = await window.videosorter.getLibrarySnapshot()
+        setSnapshot(nextSnapshot)
+        setShowManualScrape(false)
+        setStatusText(`已手动刮削: ${result.title}`)
+      }
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : '手动刮削失败。')
+    } finally {
+      setManualScrapeLoading(false)
     }
   }
 
@@ -2298,6 +2344,111 @@ function App() {
             <Trash2 className="size-4" />
             删除文件夹
           </button>
+        </div>
+      )}
+
+      {/* 手动刮削弹窗 */}
+      {showManualScrape && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowManualScrape(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl max-h-[80vh] overflow-auto">
+            <button
+              onClick={() => setShowManualScrape(false)}
+              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+            >
+              <X className="size-4" />
+            </button>
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400">
+                <Search className="size-5" />
+              </div>
+              <div>
+                <div className="text-lg font-medium text-white">手动刮削</div>
+                <div className="text-sm text-zinc-500">自动搜索未找到，手动输入关键词搜索</div>
+              </div>
+            </div>
+
+            {/* 搜索输入 */}
+            <div className="flex gap-2 mb-4">
+              <Input
+                value={manualScrapeQuery}
+                onChange={(e) => setManualScrapeQuery(e.target.value)}
+                placeholder="输入电影或电视剧名称..."
+                className="flex-1"
+                onKeyDown={(e) => e.key === 'Enter' && void handleManualScrapeSearch()}
+              />
+              <Button
+                onClick={() => void handleManualScrapeSearch()}
+                disabled={manualScrapeSearching || !manualScrapeQuery.trim()}
+                className="rounded-lg"
+              >
+                {manualScrapeSearching ? (
+                  <LoaderCircle className="size-4 animate-spin" />
+                ) : (
+                  <Search className="size-4" />
+                )}
+              </Button>
+            </div>
+
+            {/* 搜索结果列表 */}
+            {manualScrapeResults.length > 0 && (
+              <div className="space-y-2 max-h-96 overflow-auto">
+                {manualScrapeResults.map((result) => (
+                  <button
+                    key={result.id}
+                    onClick={() => void handleManualScrapeSelect(result)}
+                    disabled={manualScrapeLoading}
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 text-left transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
+                  >
+                    <div className="flex gap-3">
+                      {result.poster_path ? (
+                        <img
+                          src={`https://image.tmdb.org/t/p/w92${result.poster_path}`}
+                          alt=""
+                          className="h-20 w-14 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="h-20 w-14 rounded bg-zinc-700 flex items-center justify-center">
+                          <FilmIcon className="size-6 text-zinc-500" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-white truncate">
+                          {result.title || result.name}
+                        </div>
+                        <div className="text-xs text-zinc-400 mt-0.5">
+                          {result.release_date || result.first_air_date?.slice(0, 4) || '未知年份'}
+                          {result.vote_average > 0 && ` · ${result.vote_average.toFixed(1)}分`}
+                          {result.media_type && ` · ${result.media_type === 'movie' ? '电影' : '电视剧'}`}
+                        </div>
+                        {result.overview && (
+                          <div className="text-xs text-zinc-500 mt-1 line-clamp-2">
+                            {result.overview}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {manualScrapeSearching && (
+              <div className="flex items-center justify-center py-8 text-zinc-400">
+                <LoaderCircle className="mr-2 size-5 animate-spin" />
+                搜索中...
+              </div>
+            )}
+
+            {!manualScrapeSearching && manualScrapeResults.length === 0 && manualScrapeQuery.trim() && (
+              <div className="py-8 text-center text-zinc-500 text-sm">
+                输入关键词后点击搜索按钮查找影视
+              </div>
+            )}
+          </div>
         </div>
       )}
 

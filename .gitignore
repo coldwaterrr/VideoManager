@@ -21,6 +21,7 @@ build
 dist-release
 release-final
 release/
+release-new/
 build-release/
 dist-build/
 *.blockmap

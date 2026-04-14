@@ -123,6 +123,8 @@ declare global {
       tmdbSetConfig: (apiKey: string) => Promise<{ success: boolean }>
       tmdbScrapeVideo: (videoId: number) => Promise<{ success: boolean; message: string }>
       tmdbScrapeAll: () => Promise<{ success: boolean; message: string; total: number; scraped: number }>
+      tmdbManualSearch: (query: string) => Promise<any[]>
+      tmdbManualScrape: (videoId: number, result: any) => Promise<{ success: boolean; message: string }>
       onTMDBScrapeProgress: (callback: (progress: TMDBScrapeProgress) => void) => () => void
       // Database selection
       dbScanForDatabases: () => Promise<DatabaseInfo[]>
