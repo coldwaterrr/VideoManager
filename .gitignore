@@ -44,3 +44,4 @@ mpv/mpv/
 *.sln
 *.sw?
 videosorter-backup.sqlite
+.claude

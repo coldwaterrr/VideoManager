@@ -25,7 +25,7 @@ export function TitleBar() {
         <button
           type="button"
           onClick={() => window.winControls!.minimize()}
-          className="flex items-center justify-center px-4 text-zinc-300 hover:text-white hover:bg-white/10 transition"
+          className="flex items-center justify-center px-4 text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
           title="最小化"
         >
           <Minus className="size-[14px]" strokeWidth={2.5} />
@@ -33,7 +33,7 @@ export function TitleBar() {
         <button
           type="button"
           onClick={() => window.winControls!.maximize()}
-          className="flex items-center justify-center px-4 text-zinc-300 hover:text-white hover:bg-white/10 transition"
+          className="flex items-center justify-center px-4 text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
           title={isMaximized ? '还原' : '最大化'}
         >
           {isMaximized ? <Minimize2 className="size-[14px]" /> : <Maximize2 className="size-[14px]" />}
@@ -41,7 +41,7 @@ export function TitleBar() {
         <button
           type="button"
           onClick={() => window.winControls!.close()}
-          className="flex items-center justify-center px-4 text-zinc-300 hover:text-white hover:bg-red-500/80 transition"
+          className="flex items-center justify-center px-4 text-zinc-400 hover:text-white hover:bg-red-500/80 transition"
           title="关闭"
         >
           <X className="size-[14px]" strokeWidth={2.5} />
