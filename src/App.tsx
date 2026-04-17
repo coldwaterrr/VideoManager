@@ -899,6 +899,7 @@ function App() {
     if (window.videosorter) {
       void loadTmdbConfig()
       void handleScanDatabases()
+      window.videosorter.appGetVersion().then((v) => setUpdateVersion(v.version))
     }
   }, [])
 
@@ -1865,7 +1866,7 @@ function App() {
               </div>
               <div>
                 <div className="text-lg font-medium text-white">检查更新</div>
-                <div className="text-sm text-zinc-500">当前版本 v0.1.0</div>
+                <div className="text-sm text-zinc-500">当前版本 v{updateVersion || '...'}</div>
               </div>
             </div>
 

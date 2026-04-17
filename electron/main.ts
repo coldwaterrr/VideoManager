@@ -236,6 +236,11 @@ ipcMain.handle('videos:delete', async (_event, videoIds: number[]) => {
   return { deletedCount: ids.length, snapshot: await getLibrarySnapshot() }
 })
 
+// ========== App Config IPC 处理器 ==========
+ipcMain.handle('app:get-version', () => {
+  return { version: app.getVersion() }
+})
+
 // ========== TMDB IPC 处理器 ==========
 ipcMain.handle('tmdb:get-config', async () => {
   return getTMDBConfig()

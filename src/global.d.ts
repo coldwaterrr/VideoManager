@@ -106,6 +106,7 @@ declare global {
     videosorter?: {
       getDatabaseMeta: () => Promise<DatabaseMeta>
       getLibrarySnapshot: () => Promise<LibrarySnapshot>
+      appGetVersion: () => Promise<{ version: string }>
       createVirtualFolder: (name: string) => Promise<LibrarySnapshot>
     deleteVirtualFolder: (folderId: number) => Promise<LibrarySnapshot>
       toggleVideoFolder: (videoId: number, folderId: number) => Promise<LibrarySnapshot>
