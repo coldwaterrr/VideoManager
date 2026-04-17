@@ -3,6 +3,7 @@ const { ipcRenderer } = require('electron');
 window.videosorter = {
   getDatabaseMeta: () => ipcRenderer.invoke('database:get-meta'),
   getLibrarySnapshot: () => ipcRenderer.invoke('library:get-snapshot'),
+  appGetVersion: () => ipcRenderer.invoke('app:get-version'),
   createVirtualFolder: (name) => ipcRenderer.invoke('library:create-folder', name),
   deleteVirtualFolder: (folderId) => ipcRenderer.invoke('library:delete-folder', folderId),
   toggleVideoFolder: (videoId, folderId) =>
@@ -25,6 +26,8 @@ window.videosorter = {
   tmdbSetConfig: (apiKey) => ipcRenderer.invoke('tmdb:set-config', apiKey),
   tmdbScrapeVideo: (videoId) => ipcRenderer.invoke('tmdb:scrape-video', videoId),
   tmdbScrapeAll: () => ipcRenderer.invoke('tmdb:scrape-all'),
+  tmdbManualSearch: (query) => ipcRenderer.invoke('tmdb:manual-search', query),
+  tmdbManualScrape: (videoId, result) => ipcRenderer.invoke('tmdb:manual-scrape', videoId, result),
   onTMDBScrapeProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);
     ipcRenderer.on('tmdb:scrape:progress', listener);
