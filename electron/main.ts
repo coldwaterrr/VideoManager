@@ -99,7 +99,7 @@ function createWindow() {
       minWidth: 1280,
       minHeight: 760,
       frame: false,
-      icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
+      icon: path.join(process.env.VITE_PUBLIC || '', 'videomanager_icon.png'),
       backgroundColor: '#09090b',
       resizable: true,
       webPreferences: {
@@ -592,12 +592,12 @@ ipcMain.handle('win:maximize', () => {
 
 // ========== 系统托盘 ==========
 function getTrayIconPath() {
-  const publicIcon = path.join(process.env.VITE_PUBLIC || '', 'electron-vite.ico')
+  const publicIcon = path.join(process.env.VITE_PUBLIC || '', 'videomanager_icon.png')
   const fs = require('fs')
   if (fs.existsSync(publicIcon)) {
     return publicIcon
   }
-  const distIcon = path.join(process.env.APP_ROOT || '', 'dist', 'electron-vite.ico')
+  const distIcon = path.join(process.env.APP_ROOT || '', 'dist', 'videomanager_icon.png')
   if (fs.existsSync(distIcon)) {
     return distIcon
   }

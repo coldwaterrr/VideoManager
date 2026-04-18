@@ -131,7 +131,7 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
   }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
 
       {/* Playing - simple controls */}
       {status === 'playing' && (
@@ -145,14 +145,14 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
             </div>
             <div className="flex gap-2">
               {playlist.length > 0 && (
-                <button onClick={() => setShowPlaylist(!showPlaylist)} className="rounded-lg bg-zinc-800 p-2 text-white transition hover:bg-zinc-700" title="播放列表">
+                <button onClick={() => setShowPlaylist(!showPlaylist)} className="rounded-lg bg-[#1a1a1c]/90 p-2 text-white backdrop-blur-sm transition hover:bg-[#2a2a2e]" title="播放列表">
                   <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6m-6 4h6m-11-4h.01M5 19h.01" /></svg>
                 </button>
               )}
-              <button onClick={() => setShowSettings(!showSettings)} className="rounded-lg bg-zinc-800 p-2 text-white transition hover:bg-zinc-700" title="设置">
+              <button onClick={() => setShowSettings(!showSettings)} className="rounded-lg bg-[#1a1a1c]/90 p-2 text-white backdrop-blur-sm transition hover:bg-[#2a2a2e]" title="设置">
                 <Settings className="size-5" />
               </button>
-              <button onClick={handleClose} className="rounded-lg bg-zinc-800 p-2 text-white transition hover:bg-zinc-700" title="关闭 (Esc)">
+              <button onClick={handleClose} className="rounded-lg bg-[#1a1a1c]/90 p-2 text-white backdrop-blur-sm transition hover:bg-[#2a2a2e]" title="关闭 (Esc)">
                 <X className="size-5" />
               </button>
             </div>
@@ -160,16 +160,16 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
 
           {playlist.length > 0 && (
             <>
-              <button onClick={() => onPrevious?.()} disabled={currentIndex === 0} className="absolute bottom-20 left-4 rounded-lg bg-zinc-800/80 p-3 text-white transition hover:bg-zinc-700 disabled:opacity-30">
+              <button onClick={() => onPrevious?.()} disabled={currentIndex === 0} className="absolute bottom-20 left-4 rounded-lg bg-[#1a1a1c]/80 p-3 text-white transition hover:bg-[#2a2a2e] disabled:opacity-30">
                 <ChevronLeft className="size-5" />
               </button>
-              <button onClick={() => onNext?.()} disabled={currentIndex === playlist.length - 1} className="absolute bottom-20 right-4 rounded-lg bg-zinc-800/80 p-3 text-white transition hover:bg-zinc-700 disabled:opacity-30">
+              <button onClick={() => onNext?.()} disabled={currentIndex === playlist.length - 1} className="absolute bottom-20 right-4 rounded-lg bg-[#1a1a1c]/80 p-3 text-white transition hover:bg-[#2a2a2e] disabled:opacity-30">
                 <ChevronRight className="size-5" />
               </button>
             </>
           )}
 
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-zinc-800/80 px-3 py-1 text-[10px] text-zinc-400">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-[#1a1a1c]/80 px-3 py-1 text-[10px] text-zinc-500">
             Esc 关闭 | ← → 切换视频 | 空格 暂停
           </div>
         </>
@@ -177,17 +177,17 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
 
       {/* Playlist panel */}
       {showPlaylist && playlist.length > 0 && (
-        <div className="absolute right-6 top-20 z-10 w-80 rounded-lg bg-zinc-900/95 backdrop-blur-sm border border-zinc-800 shadow-xl overflow-hidden">
-          <div className="sticky top-0 bg-zinc-900/90 px-4 py-3 border-b border-zinc-800">
+        <div className="absolute right-6 top-20 z-10 w-80 rounded-lg bg-[#141416]/95 backdrop-blur-sm border border-[#2a2a2e] shadow-xl overflow-hidden">
+          <div className="sticky top-0 bg-[#141416]/90 px-4 py-3 border-b border-[#2a2a2e]">
             <div className="text-sm font-medium text-white">播放列表 ({playlist.length})</div>
           </div>
           <div className="max-h-96 overflow-y-auto">
             {playlist.map((video, index) => (
-              <div key={index} className={`px-4 py-2 text-sm cursor-pointer transition ${index === currentIndex ? 'bg-violet-500/20 text-white' : 'text-zinc-300 hover:bg-zinc-800'}`} onClick={() => handleSelectVideo(index)}>
+              <div key={index} className={`px-4 py-2 text-sm cursor-pointer transition ${index === currentIndex ? 'bg-gradient-to-r from-[#6366f1]/20 to-[#8b5cf6]/20 text-white' : 'text-zinc-300 hover:bg-[#1e1e20]'}`} onClick={() => handleSelectVideo(index)}>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-zinc-500 w-6">{index + 1}</span>
                   <span className="flex-1 truncate">{video.name}</span>
-                  {index === currentIndex && <span className="text-xs text-violet-400">播放中</span>}
+                  {index === currentIndex && <span className="text-xs text-[#8b5cf6]">播放中</span>}
                 </div>
               </div>
             ))}
@@ -197,10 +197,10 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
 
       {/* Settings panel */}
       {showSettings && (
-        <div className="absolute right-20 top-20 z-10 w-80 rounded-lg bg-zinc-900/95 backdrop-blur-sm border border-zinc-800 shadow-xl overflow-hidden">
-          <div className="sticky top-0 bg-zinc-900/90 px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+        <div className="absolute right-20 top-20 z-10 w-80 rounded-lg bg-[#141416]/95 backdrop-blur-sm border border-[#2a2a2e] shadow-xl overflow-hidden">
+          <div className="sticky top-0 bg-[#141416]/90 px-4 py-3 border-b border-[#2a2a2e] flex items-center justify-between">
             <div className="text-sm font-medium text-white">播放器设置</div>
-            <button onClick={() => setShowSettings(false)} className="text-zinc-400 hover:text-white"><X className="size-4" /></button>
+            <button onClick={() => setShowSettings(false)} className="text-zinc-500 hover:text-white"><X className="size-4" /></button>
           </div>
           <div className="p-4 space-y-5">
             <SettingItem
@@ -221,7 +221,7 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
               <div className="text-sm text-white">超分 Shader</div>
               <div className="flex gap-1">
                 {(['anime4k', 'fsrcnnx', 'none'] as const).map(shader => (
-                  <button key={shader} onClick={() => handleSaveConfig({ superResShader: shader })} className={`flex-1 rounded px-2 py-1 text-xs transition ${mpvConfig.superResShader === shader ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}>
+                  <button key={shader} onClick={() => handleSaveConfig({ superResShader: shader })} className={`flex-1 rounded px-2 py-1 text-xs transition ${mpvConfig.superResShader === shader ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white' : 'bg-[#1e1e20] text-zinc-400 hover:bg-[#2a2a2e]'}`}>
                     {shader === 'none' ? '无' : shader.toUpperCase()}
                   </button>
                 ))}
@@ -235,9 +235,9 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
 
       {/* Error */}
       {status === 'error' && (
-        <div className="rounded-lg bg-zinc-800 p-6 max-w-md">
+        <div className="rounded-lg bg-[#1a1a1c] p-6 max-w-md">
           <p className="text-sm text-red-400 mb-2">启动 mpv 失败</p>
-          <p className="text-xs text-zinc-400 mb-4">{errorMsg}</p>
+          <p className="text-xs text-zinc-500 mb-4">{errorMsg}</p>
           <button onClick={handleClose} className="rounded bg-white/10 px-4 py-1.5 text-xs text-white hover:bg-white/20">关闭</button>
         </div>
       )}

@@ -4,15 +4,19 @@
   "appId": "com.videomanager.app",
   "asar": true,
   "productName": "VideoManager",
+  "icon": "public/videomanager_icon.png",
   "directories": {
-    "output": "release/${version}"
+    "output": "build-v7/${version}"
   },
   "files": [
     "dist",
     "dist-electron"
   ],
   "extraFiles": [
-    "mpv/**"
+    {
+      "from": "mpv",
+      "to": "mpv"
+    }
   ],
   "mac": {
     "target": [

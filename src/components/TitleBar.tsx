@@ -19,13 +19,13 @@ export function TitleBar() {
   if (!window.winControls) return null
 
   return (
-    <div className="flex h-10 w-full items-center justify-between bg-transparent select-none" style={dragStyle}>
+    <div className="flex h-10 w-full items-center justify-between bg-gradient-to-b from-[#1c1c1e] to-[#141416] border-b border-[#2a2a2e] select-none" style={dragStyle}>
       <div className="flex-1" style={dragStyle} />
       <div className="flex h-full items-stretch" style={noDragStyle}>
         <button
           type="button"
           onClick={() => window.winControls!.minimize()}
-          className="flex items-center justify-center px-4 text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+          className="flex items-center justify-center px-4 text-zinc-400 hover:text-white hover:bg-[#2a2a2e] transition"
           title="最小化"
         >
           <Minus className="size-[14px]" strokeWidth={2.5} />
@@ -33,7 +33,7 @@ export function TitleBar() {
         <button
           type="button"
           onClick={() => window.winControls!.maximize()}
-          className="flex items-center justify-center px-4 text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+          className="flex items-center justify-center px-4 text-zinc-400 hover:text-white hover:bg-[#2a2a2e] transition"
           title={isMaximized ? '还原' : '最大化'}
         >
           {isMaximized ? <Minimize2 className="size-[14px]" /> : <Maximize2 className="size-[14px]" />}

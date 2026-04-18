@@ -306,8 +306,8 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
     <article
       className={`group relative rounded-xl border p-4 transition-all duration-200 ${
         isSelected
-          ? 'border-violet-500/30 bg-zinc-900/60'
-          : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-900/60'
+          ? 'border-[#6366f1]/30 bg-[#1a1a1c]/60'
+          : 'border-[#2a2a2e] bg-[#1a1a1c]/40 hover:border-[#3a3a3e] hover:bg-[#1a1a1c]/60'
       }`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -364,13 +364,13 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
           )}
           
           <div className="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100">
-            <div className="flex size-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+            <div className="flex size-12 items-center justify-center rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] shadow-[0_4px_16px_rgba(99,102,241,0.4)]">
               <svg className="size-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z"/>
               </svg>
             </div>
           </div>
-          <div className="relative z-10 rounded-full border border-white/12 bg-black/25 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/80">
+          <div className="relative z-10 rounded-full border border-[#2a2a2e] bg-black/25 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/80">
             {video.name.split('.').pop() ?? 'VIDEO'}
           </div>
         </div>
@@ -398,11 +398,11 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
                 <div className="flex items-center gap-1.5 text-sm text-zinc-400">
                   <Star className="size-3.5 text-yellow-500" />
                   <span>{(video.voteAverage ?? 0).toFixed(1)}</span>
-                  <span className="text-zinc-600">({video.voteCount ?? 0} 评分)</span>
+                  <span className="text-zinc-500">({video.voteCount ?? 0} 评分)</span>
                 </div>
               )}
               {video.originalTitle && video.originalTitle !== video.title && (
-                <div className="truncate text-xs text-zinc-600">{video.originalTitle}</div>
+                <div className="truncate text-xs text-zinc-500">{video.originalTitle}</div>
               )}
             </>
           ) : (
@@ -433,7 +433,7 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
       </div>
 
       <div className="mt-4 space-y-3">
-        <div className="text-xs uppercase tracking-[0.24em] text-zinc-600">归类到虚拟文件夹</div>
+        <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">归类到虚拟文件夹</div>
         <div className="flex flex-wrap gap-2">
         {folders.map((folder: VirtualFolderRecord) => {
          const assigned = video.folderIds.includes(folder.id)
@@ -446,8 +446,8 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
              disabled={isMutatingFolder || isPreviewMode}
              className={`rounded-full px-3 py-1.5 text-xs transition ${
                assigned
-                 ? 'bg-white text-zinc-950'
-                 : 'bg-white/[0.05] text-zinc-400 hover:bg-white/[0.1] hover:text-white'
+                 ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white'
+                 : 'bg-[#1e1e20] text-zinc-400 hover:bg-[#2a2a2e] hover:text-white'
              }`}
            >
              {pendingVideoId === video.id && isMutatingFolder ? (
@@ -1230,7 +1230,7 @@ function App() {
       <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col px-6 pb-6">
         <header className="flex flex-col gap-5 pb-6 pt-2 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.06] text-white shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
+            <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white shadow-[0_4px_16px_rgba(99,102,241,0.4)]">
               <Clapperboard className="size-5" />
             </div>
             <div>
@@ -1239,7 +1239,7 @@ function App() {
             </div>
           </div>
 
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-5 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.35)] xl:mx-0">
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-3 rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] px-5 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.35)] xl:mx-0">
             <Search className="size-5 shrink-0 text-zinc-500" />
             <Input
               value={keyword}
@@ -1251,25 +1251,25 @@ function App() {
         </header>
 
         <div className="grid flex-1 grid-cols-1 gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="flex min-h-[760px] flex-col rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 backdrop-blur-md min-w-[280px]">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <aside className="flex min-h-[760px] flex-col rounded-2xl border border-[#2a2a2e] bg-gradient-to-b from-[#161618] to-[#121214] p-5 backdrop-blur-md min-w-[280px]">
+            <div className="rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-medium text-white">资源库状态</div>
-                <div className="rounded-lg border border-zinc-800 px-3 py-1 text-[11px] text-zinc-400">
+                <div className="rounded-lg border border-[#2a2a2e] px-3 py-1 text-[11px] text-zinc-400">
                   {isPreviewMode ? '预览模式' : '桌面模式'}
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-white/[0.04] p-3">
+                <div className="rounded-2xl bg-[#1e1e20] p-3">
                   <div className="text-xs text-zinc-500">视频总数</div>
                   <div className="mt-2 text-2xl font-semibold text-white">{snapshot.videos.length}</div>
                 </div>
-                <div className="rounded-2xl bg-white/[0.04] p-3">
-                  <div className="text-xs text-zinc-500">自定义文件夹</div>
+                <div className="rounded-2xl bg-[#1e1e20] p-3">
+                    <div className="text-xs text-zinc-500">自定义文件夹</div>
                   <div className="mt-2 text-2xl font-semibold text-white">{snapshot.folders.length}</div>
                 </div>
               </div>
-              <div className="mt-4 rounded-2xl bg-white/[0.04] p-3 text-xs text-zinc-400">
+              <div className="mt-4 rounded-2xl bg-[#1e1e20] p-3 text-xs text-zinc-400">
                 <div className="flex items-center gap-2 text-zinc-200">
                   <Database className="size-3.5" />
                   SQLite
@@ -1301,8 +1301,8 @@ function App() {
                     }}
                     className={`flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition ${
                       isActive
-                        ? 'bg-white text-zinc-950 shadow-[0_14px_40px_rgba(255,255,255,0.08)]'
-                        : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
+                        ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white shadow-[0_4px_12px_rgba(99,102,241,0.25)]'
+                        : 'text-zinc-300 hover:bg-[#1e1e20] hover:text-white'
                     }`}
                   >
                     <span className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
@@ -1324,11 +1324,11 @@ function App() {
                 <select
                   value={selectedTag || ''}
                   onChange={(e) => setSelectedTag(e.target.value || null)}
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-200 focus:border-white/20 focus:outline-none focus:ring-0"
+                  className="w-full rounded-2xl border border-[#2a2a2e] bg-[#1a1a1c] px-3 py-2.5 text-sm text-zinc-200 focus:border-[#6366f1] focus:outline-none focus:ring-0 appearance-none"
                 >
-                  <option value="" className="text-zinc-900">全部标签</option>
+                  <option value="" className="bg-[#1a1a1c] text-zinc-200">全部标签</option>
                   {allTags.map((tag) => (
-                    <option key={tag.name} value={tag.name} className="text-zinc-900">
+                    <option key={tag.name} value={tag.name} className="bg-[#1a1a1c] text-zinc-200">
                       {tag.name} ({tag.count})
                     </option>
                   ))}
@@ -1336,7 +1336,7 @@ function App() {
                 {selectedTag && (
                   <button
                     onClick={() => setSelectedTag(null)}
-                    className="rounded-full bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 transition"
+                    className="rounded-lg bg-[#1e1e20] px-3 py-1.5 text-xs text-zinc-300 hover:bg-[#2a2a2e] transition"
                   >
                     清除标签筛选
                   </button>
@@ -1345,7 +1345,7 @@ function App() {
             )}
 
             <div className="mt-auto space-y-4 px-2 pb-2 pt-6">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+              <div className="rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] p-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
                   <FolderPlus className="size-4" />
                   新建虚拟文件夹
@@ -1355,7 +1355,7 @@ function App() {
                     value={newFolderName}
                     onChange={(event) => setNewFolderName(event.target.value)}
                     placeholder="例如：课程素材"
-                    className="rounded-2xl border-white/8 bg-white/[0.03]"
+                    className="rounded-xl border-[#2a2a2e] bg-[#1a1a1c]"
                   />
                   <Button
                     type="button"
@@ -1370,13 +1370,13 @@ function App() {
                 </div>
               </div>
 
-              <div className="rounded-xl bg-zinc-900 px-4 py-4 text-xs text-zinc-500">
+              <div className="rounded-xl bg-[#1a1a1c] px-4 py-4 text-xs text-zinc-500">
                 <div className="flex items-center gap-2 text-zinc-300">
                   <FolderOpen className="size-3.5" />
                   最近扫描目录
                 </div>
                 <div className="mt-2 truncate">{snapshot.lastScanDirectory ?? '尚未选择扫描目录'}</div>
-                <div className="mt-2 text-zinc-600">上次扫描：{formatTimeLabel(snapshot.lastScannedAt)}</div>
+                <div className="mt-2 text-zinc-500">上次扫描：{formatTimeLabel(snapshot.lastScannedAt)}</div>
                 <Button
                   type="button"
                   variant="ghost"
@@ -1391,7 +1391,7 @@ function App() {
               </div>
 
               {/* 数据库选择 */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+              <div className="rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] p-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
                   <Database className="size-4" />
                   数据库
@@ -1416,15 +1416,15 @@ function App() {
             </div>
           </aside>
 
-          <main className="rounded-[36px] border border-white/6 bg-white/[0.03] p-5 backdrop-blur-2xl">
-            <div className="flex flex-col gap-5 border-b border-white/6 px-2 pb-5">
+          <main className="rounded-2xl border border-[#2a2a2e] bg-[#141416] p-5 backdrop-blur-2xl">
+            <div className="flex flex-col gap-5 border-b border-[#2a2a2e] px-2 pb-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <div className="text-sm text-zinc-500">当前视图</div>
                   <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">{activeFolder.name}</h1>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-400">
+                  <div className="rounded-lg border border-[#2a2a2e] px-4 py-2 text-sm text-zinc-400">
                     {filteredVideos.length} 个视频 · {selectedVideoIds.size > 0 && `已选 ${selectedVideoIds.size}`}
                   </div>
                   {filteredVideos.length > 0 && (
@@ -1464,17 +1464,17 @@ function App() {
                       <select
                         value={sortField}
                         onChange={(e) => setSortField(e.target.value as 'name' | 'size' | 'time')}
-                        className="h-10 rounded-lg border border-zinc-700 bg-zinc-800 px-4 pr-8 text-sm text-zinc-200 appearance-none cursor-pointer focus:outline-none focus:border-zinc-600"
+                        className="h-10 rounded-lg border border-[#2a2a2e] bg-[#1a1a1c] px-4 pr-8 text-sm text-zinc-200 appearance-none cursor-pointer focus:outline-none focus:border-[#6366f1]"
                       >
-                        <option value="time" className="bg-zinc-900">按时间</option>
-                        <option value="name" className="bg-zinc-900">按名称</option>
-                        <option value="size" className="bg-zinc-900">按大小</option>
+                        <option value="time" className="bg-[#1a1a1c]">按时间</option>
+                        <option value="name" className="bg-[#1a1a1c]">按名称</option>
+                        <option value="size" className="bg-[#1a1a1c]">按大小</option>
                       </select>
                       <ArrowUpDown className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500 pointer-events-none" />
                     </div>
                     <button
                       onClick={() => setSortOrder((o) => o === 'asc' ? 'desc' : 'asc')}
-                      className="h-10 w-10 rounded-lg border border-zinc-700 bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white hover:border-zinc-600 transition"
+                      className="h-10 w-10 rounded-lg border border-[#2a2a2e] bg-[#1a1a1c] flex items-center justify-center text-zinc-400 hover:text-white hover:border-[#3a3a3e] transition"
                       title={sortOrder === 'asc' ? '升序' : '降序'}
                     >
                       {sortOrder === 'asc' ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
@@ -1541,7 +1541,7 @@ function App() {
               </div>
 
               {showFilter && (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-4">
+                <div className="rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] p-4">
                   <div className="mb-4 text-sm font-medium text-white">扫描筛选器</div>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     <div>
@@ -1551,7 +1551,7 @@ function App() {
                         min="0"
                         value={filterMinSize}
                         onChange={(e) => setFilterMinSize(Number(e.target.value))}
-                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-white/20 focus:outline-none"
+                        className="w-full rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#6366f1] focus:outline-none"
                         placeholder="0"
                       />
                     </div>
@@ -1562,7 +1562,7 @@ function App() {
                         min="0"
                         value={filterMaxSize}
                         onChange={(e) => setFilterMaxSize(Number(e.target.value))}
-                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-white/20 focus:outline-none"
+                        className="w-full rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#6366f1] focus:outline-none"
                         placeholder="0"
                       />
                     </div>
@@ -1582,8 +1582,8 @@ function App() {
                             }}
                             className={`rounded-full px-3 py-1 text-xs transition ${
                               filterFormats.includes(format)
-                                ? 'bg-white text-zinc-950'
-                                : 'bg-white/10 text-zinc-400 hover:bg-white/20'
+                                ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white'
+                                : 'bg-[#1e1e20] text-zinc-400 hover:bg-[#2a2a2e]'
                             }`}
                           >
                             {format}
@@ -1601,7 +1601,7 @@ function App() {
               )}
 
               <div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3 text-sm text-zinc-400">
+                <div className="rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] px-4 py-3 text-sm text-zinc-400">
                   {isScanning && scanProgress ? (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
@@ -1629,13 +1629,13 @@ function App() {
                     </div>
                   ) : showAiNotification && aiPreview ? (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-violet-300">
+                      <span className="text-sm text-[#818cf8]">
                         AI 分类完成，共 {aiPreview.folders.length} 个文件夹
                       </span>
                       <div className="flex gap-2">
                         <button
                           onClick={() => void handleAiApplyDirect()}
-                          className="rounded-full bg-violet-600 px-4 py-1 text-xs text-white hover:bg-violet-500 transition"
+                          className="rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] px-4 py-1 text-xs text-white hover:shadow-[0_4px_16px_rgba(99,102,241,0.4)] transition"
                         >
                           应用分类
                         </button>
@@ -1715,8 +1715,8 @@ function App() {
                         onClick={() => setCurrentPage(pageNum)}
                         className={`size-8 rounded-lg text-sm transition ${
                           currentPage === pageNum
-                            ? 'bg-violet-500 text-white'
-                            : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                            ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white'
+                            : 'text-zinc-400 hover:bg-[#1e1e20] hover:text-white'
                         }`}
                       >
                         {pageNum}
@@ -1751,8 +1751,8 @@ function App() {
             )}
 
             {filteredVideos.length === 0 && (
-              <div className="mt-6 flex h-[340px] flex-col items-center justify-center rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 px-6 text-center">
-                <div className="flex size-14 items-center justify-center rounded-xl bg-zinc-800 text-zinc-300">
+              <div className="mt-6 flex h-[340px] flex-col items-center justify-center rounded-xl border border-dashed border-[#2a2a2e] bg-[#1a1a1c] px-6 text-center">
+                <div className="flex size-14 items-center justify-center rounded-xl bg-[#1e1e20] text-zinc-300">
                   <Film className="size-6" />
                 </div>
                 <div className="mt-5 text-lg font-medium text-white">
@@ -1777,14 +1777,14 @@ function App() {
 
             {/* 刮削进度 */}
             {isScraping && (
-              <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/80 p-4">
+              <div className="mt-4 rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] p-4">
                 <div className="flex items-center gap-2 text-sm text-zinc-300">
                   <LoaderCircle className="size-4 animate-spin text-emerald-400" />
                   <span>正在刮削...</span>
                 </div>
-                <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div className="mt-2 h-1.5 rounded-full bg-[#2a2a2e] overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500 animate-pulse transition-all duration-300"
+                    className="h-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] animate-pulse transition-all duration-300"
                     style={{ width: '30%' }}
                   />
                 </div>
@@ -1801,10 +1801,10 @@ function App() {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowTmdbConfig(false)}
           />
-          <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl">
+          <div className="relative w-full max-w-md rounded-2xl border border-[#2a2a2e] bg-gradient-to-b from-[#1a1a1c] to-[#141416] p-8 shadow-2xl">
             <button
               onClick={() => setShowTmdbConfig(false)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-[#1e1e20] hover:text-white transition"
             >
               <X className="size-4" />
             </button>
@@ -1824,11 +1824,11 @@ function App() {
                   value={tmdbApiKey}
                   onChange={(e) => setTmdbApiKey(e.target.value)}
                   placeholder="输入你的 TMDB API Key"
-                  className="w-full rounded-xl border-white/10 bg-white/5 text-sm"
+                  className="w-full rounded-xl border-[#2a2a2e] bg-[#1a1a1c] text-sm"
                 />
-                <div className="mt-2 text-xs text-zinc-600">
+                <div className="mt-2 text-xs text-zinc-500">
                   前往{' '}
-                  <span className="text-zinc-400 underline cursor-pointer" onClick={() => window.open('https://www.themoviedb.org/settings/api', '_blank')}>
+                  <span className="text-zinc-300 underline cursor-pointer" onClick={() => window.open('https://www.themoviedb.org/settings/api', '_blank')}>
                     TMDB 设置页面
                   </span>
                   {' '}获取 API Key
@@ -1837,7 +1837,7 @@ function App() {
               <Button
                 onClick={() => void handleSaveTmdbConfig()}
                 disabled={tmdbApiKey.trim().length === 0}
-                className="h-11 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+                className="h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white"
               >
                 保存配置
               </Button>
@@ -1853,15 +1853,15 @@ function App() {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowUpdateDialog(false)}
           />
-          <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl">
+          <div className="relative w-full max-w-md rounded-2xl border border-[#2a2a2e] bg-gradient-to-b from-[#1a1a1c] to-[#141416] p-8 shadow-2xl">
             <button
               onClick={() => setShowUpdateDialog(false)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-[#1e1e20] hover:text-white transition"
             >
               <X className="size-4" />
             </button>
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-blue-500/20 text-blue-400">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-[#6366f1]/20 text-[#818cf8]">
                 <Download className="size-5" />
               </div>
               <div>
@@ -1872,7 +1872,7 @@ function App() {
 
             {updateStatus === 'checking' && (
               <div className="flex items-center gap-3 text-sm text-zinc-300 py-4">
-                <LoaderCircle className="size-4 animate-spin text-blue-400" />
+                <LoaderCircle className="size-4 animate-spin text-[#818cf8]" />
                 正在检查更新...
               </div>
             )}
@@ -1885,12 +1885,12 @@ function App() {
 
             {updateStatus === 'available' && (
               <div className="space-y-4 py-2">
-                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-sm text-white">
-                  发现新版本 <span className="font-semibold text-blue-400">v{updateVersion}</span>
+                <div className="rounded-xl border border-[#6366f1]/20 bg-[#6366f1]/5 p-4 text-sm text-white">
+                  发现新版本 <span className="font-semibold text-[#818cf8]">v{updateVersion}</span>
                 </div>
                 <Button
                   onClick={() => void handleDownloadUpdate()}
-                  className="h-11 w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white"
+                  className="h-11 w-full rounded-xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:shadow-[0_4px_16px_rgba(99,102,241,0.4)] text-white"
                 >
                   <Download className="mr-2 size-4" />
                   下载更新
@@ -1901,12 +1901,12 @@ function App() {
             {updateStatus === 'downloading' && (
               <div className="space-y-3 py-2">
                 <div className="flex items-center gap-2 text-sm text-zinc-300">
-                  <LoaderCircle className="size-4 animate-spin text-blue-400" />
+                  <LoaderCircle className="size-4 animate-spin text-[#818cf8]" />
                   正在下载... {updateProgress}%
                 </div>
-                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                <div className="h-2 rounded-full bg-[#2a2a2e] overflow-hidden">
                   <div
-                    className="h-full bg-blue-500 transition-all duration-300"
+                    className="h-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] transition-all duration-300"
                     style={{ width: `${updateProgress}%` }}
                   />
                 </div>
@@ -1920,7 +1920,7 @@ function App() {
                 </div>
                 <Button
                   onClick={() => void handleInstallUpdate()}
-                  className="h-11 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+                  className="h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white"
                 >
                   重启并安装
                 </Button>
@@ -1934,7 +1934,7 @@ function App() {
             {updateStatus === 'idle' && (
               <Button
                 onClick={() => void handleCheckUpdate()}
-                className="h-11 w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white"
+                className="h-11 w-full rounded-xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:shadow-[0_4px_16px_rgba(99,102,241,0.4)] text-white"
               >
                 检查更新
               </Button>
@@ -1950,10 +1950,10 @@ function App() {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowMpvConfig(false)}
           />
-          <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl">
+          <div className="relative w-full max-w-md rounded-2xl border border-[#2a2a2e] bg-gradient-to-b from-[#1a1a1c] to-[#141416] p-8 shadow-2xl">
             <button
               onClick={() => setShowMpvConfig(false)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-[#1e1e20] hover:text-white transition"
             >
               <X className="size-4" />
             </button>
@@ -1979,7 +1979,7 @@ function App() {
                     value={mpvConfigState.mpvPath}
                     onChange={(e) => setMpvConfigState({ ...mpvConfigState, mpvPath: e.target.value })}
                     placeholder="mpv.exe 所在目录路径"
-                    className="flex-1 rounded-xl border-white/10 bg-white/5 text-sm"
+                    className="flex-1 rounded-xl border-[#2a2a2e] bg-[#1a1a1c] text-sm"
                   />
                   <Button
                     onClick={async () => {
@@ -1989,19 +1989,19 @@ function App() {
                         await handleSaveMpvConfig({ mpvPath: path })
                       }
                     }}
-                    variant="outline"
-                    className="rounded-xl border-white/10 text-xs text-zinc-300 hover:bg-white/10"
+                    variant="secondary"
+                    className="rounded-xl border-[#2a2a2e] text-xs text-zinc-300 hover:bg-[#2a2a2e]"
                   >
                     检查
                   </Button>
                 </div>
-                <div className="mt-2 text-xs text-zinc-600">
-                  默认路径: <code className="text-zinc-400">项目根目录/mpv/</code>，内含 mpv.exe 和 shaders/
+                <div className="mt-2 text-xs text-zinc-500">
+                  默认路径: <code className="text-zinc-300">项目根目录/mpv/</code>，内含 mpv.exe 和 shaders/
                 </div>
               </div>
 
               {/* Anime4K */}
-              <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-4">
+              <div className="flex items-center justify-between rounded-xl border border-[#2a2a2e] bg-[#1e1e20] p-4">
                 <div>
                   <div className="text-sm text-white">Anime4K 超分辨率</div>
                   <div className="text-xs text-zinc-500 mt-0.5">锐化动漫线条，提升画质</div>
@@ -2009,7 +2009,7 @@ function App() {
                 <button
                   onClick={() => handleSaveMpvConfig({ anime4k: !mpvConfigState.anime4k })}
                   className={`relative inline-flex h-6 w-11 rounded-full transition ${
-                    mpvConfigState.anime4k ? 'bg-orange-500' : 'bg-zinc-600'
+                    mpvConfigState.anime4k ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]' : 'bg-[#2a2a2e]'
                   }`}
                 >
                   <span className={`inline-block size-4 translate-y-1 rounded-full bg-white transition ${
@@ -2019,7 +2019,7 @@ function App() {
               </div>
 
               {/* 补帧 */}
-              <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] p-4">
+              <div className="flex items-center justify-between rounded-xl border border-[#2a2a2e] bg-[#1e1e20] p-4">
                 <div>
                   <div className="text-sm text-white">补帧 (插帧)</div>
                   <div className="text-xs text-zinc-500 mt-0.5">使视频更流畅，动漫 24→60fps 效果显著</div>
@@ -2027,7 +2027,7 @@ function App() {
                 <button
                   onClick={() => handleSaveMpvConfig({ interpolation: !mpvConfigState.interpolation })}
                   className={`relative inline-flex h-6 w-11 rounded-full transition ${
-                    mpvConfigState.interpolation ? 'bg-orange-500' : 'bg-zinc-600'
+                    mpvConfigState.interpolation ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]' : 'bg-[#2a2a2e]'
                   }`}
                 >
                   <span className={`inline-block size-4 translate-y-1 rounded-full bg-white transition ${
@@ -2050,8 +2050,8 @@ function App() {
                       onClick={() => handleSaveMpvConfig({ superResShader: shader.value })}
                       className={`flex-1 rounded-xl px-3 py-2 text-sm transition ${
                         mpvConfigState.superResShader === shader.value
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+                          ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white'
+                          : 'bg-[#1e1e20] text-zinc-400 hover:bg-[#2a2a2e]'
                       }`}
                     >
                       {shader.label}
@@ -2076,15 +2076,15 @@ function App() {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowAiClassify(false)}
           />
-          <div className="relative w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl max-h-[85vh] flex flex-col">
+          <div className="relative w-full max-w-lg rounded-2xl border border-[#2a2a2e] bg-gradient-to-b from-[#1a1a1c] to-[#141416] p-8 shadow-2xl max-h-[85vh] flex flex-col">
             <button
               onClick={() => setShowAiClassify(false)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-[#1e1e20] hover:text-white transition"
             >
               <X className="size-4" />
             </button>
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-[#6366f1]/20 text-[#818cf8]">
                 <Sparkles className="size-5" />
               </div>
               <div>
@@ -2101,19 +2101,19 @@ function App() {
                   value={aiRule}
                   onChange={(e) => setAiRule(e.target.value)}
                   placeholder="例如：按电影类型分成动作片、喜剧片、科幻片等"
-                  className="w-full h-20 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-violet-500/50 resize-none"
+                  className="w-full h-20 rounded-xl border border-[#2a2a2e] bg-[#1a1a1c] px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-[#6366f1] resize-none"
                 />
               </div>
 
               {/* API 配置 */}
-              <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4 space-y-3">
+              <div className="rounded-xl border border-[#2a2a2e] bg-[#1e1e20] p-4 space-y-3">
                 <div>
                   <label className="mb-1.5 block text-xs text-zinc-500">API Key</label>
                   <Input
                     value={aiConfig.apiKey}
                     onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
                     placeholder="sk-or-v1-..."
-                    className="w-full rounded-lg border-white/10 bg-white/5 text-xs"
+                    className="w-full rounded-lg border-[#2a2a2e] bg-[#1a1a1c] text-xs"
                   />
                 </div>
                 <div className="flex gap-3">
@@ -2123,7 +2123,7 @@ function App() {
                       value={aiConfig.model}
                       onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
                       placeholder="qwen/qwen3.6-plus:free"
-                      className="w-full rounded-lg border-white/10 bg-white/5 text-xs"
+                      className="w-full rounded-lg border-[#2a2a2e] bg-[#1a1a1c] text-xs"
                     />
                   </div>
                   <div className="flex-1">
@@ -2131,7 +2131,7 @@ function App() {
                     <Input
                       value={aiConfig.baseUrl}
                       onChange={(e) => setAiConfig({ ...aiConfig, baseUrl: e.target.value })}
-                      className="w-full rounded-lg border-white/10 bg-white/5 text-xs"
+                      className="w-full rounded-lg border-[#2a2a2e] bg-[#1a1a1c] text-xs"
                     />
                   </div>
                 </div>
@@ -2139,7 +2139,7 @@ function App() {
                   <Button
                     onClick={() => void handleAiTest()}
                     disabled={aiIsTesting || !aiConfig.apiKey}
-                    className="h-8 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs"
+                    className="h-8 rounded-lg bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:shadow-[0_4px_16px_rgba(99,102,241,0.4)] text-xs"
                   >
                     {aiIsTesting ? <LoaderCircle className="mr-1 size-3 animate-spin" /> : null}
                     测试连接
@@ -2159,12 +2159,12 @@ function App() {
 
               {/* 流式输出区域 */}
               {(aiClassifying || aiReasoning || aiRawContent) && (
-                <div className="rounded-lg border border-white/8 bg-black/20 p-3 max-h-72 overflow-auto">
+                <div className="rounded-lg border border-[#2a2a2e] bg-black/20 p-3 max-h-72 overflow-auto">
                   {aiReasoning && (
                     <div className="mb-3">
                       <div className="flex items-center gap-1.5 mb-1.5">
-                        <LoaderCircle className={`size-3 ${aiClassifying ? 'animate-spin' : ''} text-violet-400`} />
-                        <span className="text-xs font-medium text-violet-400">推理过程</span>
+                        <LoaderCircle className={`size-3 ${aiClassifying ? 'animate-spin' : ''} text-[#818cf8]`} />
+                        <span className="text-xs font-medium text-[#818cf8]">推理过程</span>
                       </div>
                       <div className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiReasoning}</div>
                     </div>
@@ -2179,7 +2179,7 @@ function App() {
                   )}
                   {!aiReasoning && !aiRawContent && aiClassifying && (
                     <div className="flex items-center gap-2 text-sm text-zinc-400">
-                      <LoaderCircle className="size-4 animate-spin text-violet-400" />
+                      <LoaderCircle className="size-4 animate-spin text-[#818cf8]" />
                       <span>AI 思考中...</span>
                     </div>
                   )}
@@ -2214,7 +2214,7 @@ function App() {
                       const isExpanded = aiExpandedFolders.has(idx)
                       const isEditing = aiEditingFolderName === idx
                       return (
-                        <div key={idx} className="rounded-lg border border-white/8 bg-white/[0.03] overflow-hidden">
+                        <div key={idx} className="rounded-lg border border-[#2a2a2e] bg-[#1e1e20] overflow-hidden">
                           {/* 文件夹头部 */}
                           <div className="flex items-center gap-2 p-3">
                             <button
@@ -2247,7 +2247,7 @@ function App() {
                                     if (e.key === 'Enter') setAiEditingFolderName(null)
                                     if (e.key === 'Escape') setAiEditingFolderName(null)
                                   }}
-                                  className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-sm text-white focus:outline-none focus:border-violet-500/50 w-32"
+                                  className="bg-[#1e1e20] border border-[#3a3a3e] rounded px-2 py-0.5 text-sm text-white focus:outline-none focus:border-[#6366f1] w-32"
                                 />
                               ) : (
                                 <span
@@ -2311,7 +2311,7 @@ function App() {
                 <Button
                   onClick={() => void handleAiApply()}
                   disabled={aiApplying}
-                  className="flex-1 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+                  className="flex-1 h-11 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white"
                 >
                   {aiApplying ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Check className="mr-2 size-4" />}
                   确认并应用
@@ -2320,7 +2320,7 @@ function App() {
                 <Button
                   onClick={() => void handleAiClassify()}
                   disabled={aiClassifying || !aiRule || !aiConfig.apiKey}
-                  className="flex-1 h-11 rounded-xl bg-violet-600 hover:bg-violet-500 text-white"
+                  className="flex-1 h-11 rounded-xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:shadow-[0_4px_16px_rgba(99,102,241,0.4)] text-white"
                 >
                   {aiClassifying ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
                   预览分类
@@ -2334,13 +2334,13 @@ function App() {
       {/* 文件夹右键菜单 */}
       {contextMenuFolder && (
         <div
-          className="fixed z-50 min-w-32 rounded-lg border border-white/10 bg-zinc-800 shadow-xl"
+          className="fixed z-50 min-w-32 rounded-lg border border-[#2a2a2e] bg-[#141416] shadow-xl"
           style={{ left: contextMenuFolder.x, top: contextMenuFolder.y }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={() => void handleDeleteFolder(contextMenuFolder.id)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10"
+            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-[#1e1e20]"
           >
             <Trash2 className="size-4" />
             删除文件夹
@@ -2355,15 +2355,15 @@ function App() {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowManualScrape(false)}
           />
-          <div className="relative w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl max-h-[80vh] overflow-auto">
+          <div className="relative w-full max-w-lg rounded-2xl border border-[#2a2a2e] bg-gradient-to-b from-[#1a1a1c] to-[#141416] p-8 shadow-2xl max-h-[80vh] overflow-auto">
             <button
               onClick={() => setShowManualScrape(false)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-[#1e1e20] hover:text-white transition"
             >
               <X className="size-4" />
             </button>
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-[#6366f1]/20 text-[#818cf8]">
                 <Search className="size-5" />
               </div>
               <div>
@@ -2378,13 +2378,13 @@ function App() {
                 value={manualScrapeQuery}
                 onChange={(e) => setManualScrapeQuery(e.target.value)}
                 placeholder="输入电影或电视剧名称..."
-                className="flex-1"
+                className="flex-1 rounded-xl border-[#2a2a2e] bg-[#1a1a1c] text-sm"
                 onKeyDown={(e) => e.key === 'Enter' && void handleManualScrapeSearch()}
               />
               <Button
                 onClick={() => void handleManualScrapeSearch()}
                 disabled={manualScrapeSearching || !manualScrapeQuery.trim()}
-                className="rounded-lg"
+                className="rounded-lg bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:shadow-[0_4px_16px_rgba(99,102,241,0.4)]"
               >
                 {manualScrapeSearching ? (
                   <LoaderCircle className="size-4 animate-spin" />
@@ -2402,7 +2402,7 @@ function App() {
                     key={result.id}
                     onClick={() => void handleManualScrapeSelect(result)}
                     disabled={manualScrapeLoading}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 text-left transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
+                    className="w-full rounded-lg border border-[#2a2a2e] bg-[#1a1a1c]/50 p-3 text-left transition hover:border-[#3a3a3e] hover:bg-[#1a1a1c] disabled:opacity-50"
                   >
                     <div className="flex gap-3">
                       {result.poster_path ? (
@@ -2412,7 +2412,7 @@ function App() {
                           className="h-20 w-14 rounded object-cover"
                         />
                       ) : (
-                        <div className="h-20 w-14 rounded bg-zinc-700 flex items-center justify-center">
+                        <div className="h-20 w-14 rounded bg-[#2a2a2e] flex items-center justify-center">
                           <FilmIcon className="size-6 text-zinc-500" />
                         </div>
                       )}
@@ -2460,15 +2460,15 @@ function App() {
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => !isSwitchingDb && setShowDbSelector(false)}
           />
-          <div className="relative w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl max-h-[80vh] overflow-auto">
+          <div className="relative w-full max-w-lg rounded-2xl border border-[#2a2a2e] bg-gradient-to-b from-[#1a1a1c] to-[#141416] p-8 shadow-2xl max-h-[80vh] overflow-auto">
             <button
               onClick={() => !isSwitchingDb && setShowDbSelector(false)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+              className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-[#1e1e20] hover:text-white transition"
             >
               <X className="size-4" />
             </button>
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-blue-500/20 text-blue-400">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-[#6366f1]/20 text-[#818cf8]">
                 <Database className="size-5" />
               </div>
               <div>
@@ -2497,7 +2497,7 @@ function App() {
                       className={`w-full rounded-xl border p-4 text-left transition ${
                         isCurrent
                           ? 'border-emerald-500/50 bg-emerald-500/10'
-                          : 'border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.06]'
+                          : 'border-[#2a2a2e] bg-[#1e1e20]/30 hover:border-[#3a3a3e] hover:bg-[#1e1e20]'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -2505,7 +2505,7 @@ function App() {
                           {db.path.split(/[\\/]/).pop()}
                         </div>
                         {isCurrent && (
-                          <span className="ml-2 shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-400">
+                          <span className="ml-2 shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-400">
                             当前
                           </span>
                         )}

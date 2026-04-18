@@ -27,9 +27,9 @@ export function SettingItem({ name, shortDesc, detail, enabled, onToggle }: Sett
         </div>
         <button
           onClick={onToggle}
-          className={`relative inline-flex h-5 w-9 rounded-full transition ${enabled ? 'bg-violet-500' : 'bg-zinc-600'}`}
+          className={`relative inline-flex h-5 w-9 rounded-full transition ${enabled ? 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]' : 'bg-[#2a2a2e]'}`}
         >
-          <span className={`inline-block size-3 translate-y-1 rounded-full bg-white transition ${enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+          <span className={`inline-block size-3 translate-y-1 rounded-full bg-white transition shadow-sm ${enabled ? 'translate-x-5' : 'translate-x-1'}`} />
         </button>
       </div>
       <div className="text-xs text-zinc-500">{shortDesc}</div>

@@ -45,8 +45,8 @@ export function loadMpvConfig(): MpvConfig {
     if (fs.existsSync(configPath)) {
       const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
       const merged = { ...def, ...data }
-      // mpvPath 可能为空字符串，需要回退到默认值
-      if (!merged.mpvPath) {
+      // mpvPath 可能为空字符串或旧路径，需要验证
+      if (!merged.mpvPath || !fs.existsSync(merged.mpvPath)) {
         merged.mpvPath = def.mpvPath
       }
       return merged

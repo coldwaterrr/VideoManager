@@ -179,13 +179,13 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0d0d0f]"
       onMouseMove={handleMouseMove}
     >
       {/* 关闭按钮 */}
       <button
         onClick={onClose}
-        className="absolute right-6 top-6 z-10 rounded-lg bg-zinc-800/80 p-2 text-white backdrop-blur-sm transition hover:bg-zinc-700"
+        className="absolute right-6 top-6 z-10 rounded-lg bg-[#1a1a1c]/90 p-2 text-white backdrop-blur-sm transition hover:bg-[#2a2a2e]"
         title="关闭 (Esc)"
       >
         <X className="size-6" />
@@ -195,7 +195,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
       {playlist.length > 0 && (
         <button
           onClick={() => setShowPlaylist(!showPlaylist)}
-          className="absolute right-20 top-6 z-10 rounded-lg bg-zinc-800/80 p-2 text-white backdrop-blur-sm transition hover:bg-zinc-700"
+          className="absolute right-20 top-6 z-10 rounded-lg bg-[#1a1a1c]/90 p-2 text-white backdrop-blur-sm transition hover:bg-[#2a2a2e]"
           title="播放列表"
         >
           <svg className="size-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -206,8 +206,8 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
 
       {/* 播放列表面板 */}
       {showPlaylist && playlist.length > 0 && (
-        <div className="absolute right-6 top-20 z-10 w-80 rounded-lg bg-zinc-900/95 backdrop-blur-sm border border-zinc-800 shadow-xl overflow-hidden">
-          <div className="sticky top-0 bg-zinc-900/90 px-4 py-3 border-b border-zinc-800">
+        <div className="absolute right-6 top-20 z-10 w-80 rounded-lg bg-[#141416]/95 backdrop-blur-sm border border-[#2a2a2e] shadow-xl overflow-hidden">
+          <div className="sticky top-0 bg-[#141416]/90 px-4 py-3 border-b border-[#2a2a2e]">
             <div className="text-sm font-medium text-white">播放列表 ({playlist.length})</div>
           </div>
           <div className="max-h-96 overflow-y-auto">
@@ -216,8 +216,8 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
                 key={index}
                 className={`px-4 py-2 text-sm cursor-pointer transition ${
                   index === currentIndex
-                    ? 'bg-violet-500/20 text-white'
-                    : 'text-zinc-300 hover:bg-zinc-800'
+                    ? 'bg-[#6366f1]/15 text-white'
+                    : 'text-zinc-300 hover:bg-[#1e1e20]'
                 }`}
                 onClick={() => onSelectVideo?.(index)}
               >
@@ -225,7 +225,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
                   <span className="text-xs text-zinc-500 w-6">{index + 1}</span>
                   <span className="flex-1 truncate">{video.name}</span>
                   {index === currentIndex && (
-                    <svg className="size-4 text-violet-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="size-4 text-[#818cf8] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                     </svg>
                   )}
@@ -267,7 +267,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
           max={duration || 0}
           value={currentTime}
           onChange={handleProgressChange}
-          className="h-1 w-full cursor-pointer rounded-full bg-zinc-700 accent-violet-500"
+          className="h-1 w-full cursor-pointer rounded-full bg-[#2a2a2e] accent-[#6366f1]"
         />
 
         {/* 控制条 */}
@@ -277,7 +277,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
             <button
               onClick={() => onPrevious?.()}
               disabled={currentIndex === 0}
-              className="rounded-lg p-2.5 bg-zinc-800 text-white transition hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-zinc-800"
+              className="rounded-lg p-2.5 bg-[#1a1a1c] text-white transition hover:bg-[#2a2a2e] disabled:opacity-30 disabled:hover:bg-[#1a1a1c]"
               title="上一个视频"
             >
               <ChevronLeft className="size-5" />
@@ -287,7 +287,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
           {/* 后退5s */}
           <button
             onClick={skipBackward}
-            className="rounded-lg p-2.5 text-zinc-300 transition hover:text-white hover:bg-zinc-800"
+            className="rounded-lg p-2.5 text-zinc-300 transition hover:text-white hover:bg-[#1e1e20]"
             title="后退5秒"
           >
             <SkipBack className="size-5" />
@@ -296,7 +296,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
           {/* 播放按钮 */}
           <button
             onClick={togglePlay}
-            className="rounded-lg bg-violet-500 p-2.5 text-white transition hover:bg-violet-400"
+            className="rounded-lg bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] p-2.5 text-white shadow-[0_4px_16px_rgba(99,102,241,0.4)] transition hover:shadow-[0_4px_20px_rgba(99,102,241,0.5)]"
             title={isPlaying ? '暂停 (空格)' : '播放 (空格)'}
           >
             {isPlaying ? (
@@ -309,7 +309,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
           {/* 快进5s */}
           <button
             onClick={skipForward}
-            className="rounded-lg p-2.5 text-zinc-300 transition hover:text-white hover:bg-zinc-800"
+            className="rounded-lg p-2.5 text-zinc-300 transition hover:text-white hover:bg-[#1e1e20]"
             title="快进5秒"
           >
             <SkipForward className="size-5" />
@@ -320,7 +320,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
             <button
               onClick={() => onNext?.()}
               disabled={currentIndex === playlist.length - 1}
-              className="rounded-lg p-2.5 bg-zinc-800 text-white transition hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-zinc-800"
+              className="rounded-lg p-2.5 bg-[#1a1a1c] text-white transition hover:bg-[#2a2a2e] disabled:opacity-30 disabled:hover:bg-[#1a1a1c]"
               title="下一个视频"
             >
               <ChevronRight className="size-5" />
@@ -331,7 +331,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
           <div className="flex items-center gap-2">
             <button
               onClick={toggleMute}
-              className="rounded-lg p-2 text-white transition hover:bg-zinc-800"
+              className="rounded-lg p-2 text-white transition hover:bg-[#1e1e20]"
               title={isMuted ? '取消静音 (M)' : '静音 (M)'}
             >
               {isMuted ? (
@@ -347,7 +347,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
               step="0.1"
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
-              className="h-1 w-16 cursor-pointer rounded-full bg-zinc-700 accent-violet-500"
+              className="h-1 w-16 cursor-pointer rounded-full bg-[#2a2a2e] accent-[#6366f1]"
             />
           </div>
 
@@ -359,7 +359,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
           {/* 全屏按钮 */}
           <button
             onClick={toggleFullscreen}
-            className="ml-auto rounded-lg p-2 text-white transition hover:bg-zinc-800"
+            className="ml-auto rounded-lg p-2 text-white transition hover:bg-[#1e1e20]"
             title={isFullscreen ? '退出全屏 (F)' : '全屏 (F)'}
           >
             {isFullscreen ? (

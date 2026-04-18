@@ -1,21 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --color-primary: #8b5cf6;
-  --color-primary-hover: #a78bfa;
-  --color-primary-muted: rgba(139, 92, 246, 0.15);
+  --color-primary: #6366f1;
+  --color-primary-hover: #818cf8;
+  --color-primary-muted: rgba(99, 102, 241, 0.15);
+  --color-primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --color-primary-glow: 0 4px 16px rgba(99, 102, 241, 0.4);
 
-  --color-bg-base: #09090b;
-  --color-bg-surface: #141414;
-  --color-bg-elevated: #1a1a1a;
-  --color-bg-hover: rgba(255, 255, 255, 0.05);
+  --color-bg-base: #0d0d0f;
+  --color-bg-surface: linear-gradient(180deg, #1a1a1c 0%, #141416 100%);
+  --color-bg-elevated: linear-gradient(180deg, #1c1c1e 0%, #141416 100%);
+  --color-bg-hover: #1e1e20;
 
-  --color-border: #27272a;
-  --color-border-subtle: #3f3f46;
+  --color-border: #2a2a2e;
+  --color-border-hover: #3a3a3e;
 
-  --color-text-primary: #ffffff;
+  --color-text-primary: #e4e4e7;
   --color-text-secondary: #a1a1aa;
   --color-text-muted: #71717a;
+  --color-text-dim: #52525b;
 
   --color-success: #22c55e;
   --color-warning: #f59e0b;
@@ -25,7 +28,7 @@
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.5);
-  --glow-primary: 0 0 20px rgba(139, 92, 246, 0.3);
+  --glow-primary: 0 0 20px rgba(99, 102, 241, 0.3);
 
   color: var(--color-text-primary);
   background-color: var(--color-bg-base);
@@ -61,5 +64,5 @@ input {
 }
 
 ::selection {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(99, 102, 241, 0.3);
 }
