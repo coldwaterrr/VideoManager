@@ -67,25 +67,20 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
     async function launch() {
       try {
         // 1. 检查 mpv 可用性
-        const { available, path } = await window.videosorter!.mpvCheckAvailable()
+        const { available, path: exePath, mpvPath: configMpvPath } = await window.videosorter!.mpvCheckAvailable()
         if (cancelled) return
         setMpvAvailable(available)
-        setMpvConfig(prev => ({ ...prev, mpvPath: path }))
+        // exePath 是完整路径，configMpvPath 是目录路径，用于 mpvLaunch 传递
+        const mpvDir = configMpvPath || exePath ? exePath.replace(/[/\\][^/\\]+$/, '') : ''
 
         // 2. 获取已保存的配置
         const savedConfig = await window.videosorter!.mpvGetConfig()
         if (cancelled) return
 
-        // 3. 合并：savedConfig 优先级高于 DEFAULT_CONFIG，mpvPath 必须用 checkAvailable 的结果
-        const mergedConfig = { ...DEFAULT_CONFIG, ...savedConfig, mpvPath: path }
+        // 3. 合并配置：保留 savedConfig 的 mpvPath，不覆盖
+        const mergedConfig = { ...DEFAULT_CONFIG, ...savedConfig }
+        if (mpvDir) mergedConfig.mpvPath = mpvDir
         setMpvConfig(mergedConfig)
-
-        if (!path) {
-          if (cancelled) return
-          setStatus('error')
-          setErrorMsg('找不到 mpv.exe，请检查 mpv 文件夹路径')
-          return
-        }
 
         // 4. 启动 mpv（内部会自动下载如果 mpv.exe 不存在）
         const { success, error } = await window.videosorter!.mpvLaunch(filePath, mergedConfig)

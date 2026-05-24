@@ -165,7 +165,7 @@ declare global {
       mpvTerminate: () => Promise<{ success: boolean }>
       mpvGetConfig: () => Promise<MpvConfig>
       mpvSaveConfig: (config: MpvConfig) => Promise<{ success: boolean }>
-      mpvCheckAvailable: () => Promise<{ available: boolean; path: string }>
+      mpvCheckAvailable: () => Promise<{ available: boolean; path: string; mpvPath: string }>
       mpvDownload: () => Promise<{ success: boolean; message: string }>
       mpvIsDownloading: () => Promise<{ downloading: boolean }>
       onMpvDownloadProgress: (callback: (progress: MpvDownloadProgress) => void) => () => void

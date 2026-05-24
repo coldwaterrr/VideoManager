@@ -194,6 +194,8 @@ export function setupMpvIPC() {
     terminateMpv()
 
     const savedConfig = loadMpvConfig()
+    // 过滤：config 中的空 mpvPath 不应覆盖 savedConfig
+    if (config && !config.mpvPath) delete config.mpvPath
     const currentConfig = { ...savedConfig, ...config }
 
     let mpvExe = findMpvExe(currentConfig.mpvPath)
@@ -315,7 +317,7 @@ export function setupMpvIPC() {
   ipcMain.handle('mpv:check-available', async () => {
     const config = loadMpvConfig()
     const exePath = findMpvExe(config.mpvPath)
-    return { available: !!exePath, path: exePath || '' }
+    return { available: !!exePath, path: exePath || '', mpvPath: config.mpvPath }
   })
 }
 
