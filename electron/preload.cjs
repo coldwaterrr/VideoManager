@@ -47,6 +47,7 @@ window.videosorter = {
     ipcRenderer.on('ai:chunk', listener);
     return () => ipcRenderer.removeListener('ai:chunk', listener);
   },
+  aiCancelClassify: () => ipcRenderer.invoke('ai:cancel-classify'),
   aiApply: (folders) => ipcRenderer.invoke('ai:apply', folders),
   // MPV Player
   mpvLaunch: (filePath, config) => ipcRenderer.invoke('mpv:launch', filePath, config),
@@ -56,6 +57,13 @@ window.videosorter = {
   mpvGetConfig: () => ipcRenderer.invoke('mpv:get-config'),
   mpvSaveConfig: (config) => ipcRenderer.invoke('mpv:save-config', config),
   mpvCheckAvailable: () => ipcRenderer.invoke('mpv:check-available'),
+  mpvDownload: () => ipcRenderer.invoke('mpv:download'),
+  mpvIsDownloading: () => ipcRenderer.invoke('mpv:is-downloading'),
+  onMpvDownloadProgress: (callback) => {
+    const l = (_e, p) => callback(p)
+    ipcRenderer.on('mpv:download-progress', l)
+    return () => ipcRenderer.removeListener('mpv:download-progress', l)
+  },
   onMpvEnd: (callback) => {
     const l = () => callback()
     ipcRenderer.on('mpv:ended', l)

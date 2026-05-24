@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Loader2, Settings } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Loader2, Settings, Download } from 'lucide-react'
 import { SettingItem } from './SettingItem'
 
 interface MpvConfigType {
@@ -10,12 +10,28 @@ interface MpvConfigType {
   mpvPath: string
 }
 
+interface DownloadProgress {
+  stage: string
+  percent: number
+  message: string
+}
+
 const DEFAULT_CONFIG: MpvConfigType = {
   anime4k: false,
   interpolation: false,
   interpolationFps: 60,
   superResShader: 'none',
   mpvPath: '',
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  checking: '正在检查...',
+  downloading_7za: '正在准备解压工具...',
+  downloading_mpv: '正在下载 mpv 播放器...',
+  extracting: '正在解压...',
+  installing: '正在安装...',
+  complete: '完成',
+  error: '下载失败',
 }
 
 interface MpvPlayerProps {
@@ -36,11 +52,17 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
   const [showSettings, setShowSettings] = useState(false)
   const [mpvAvailable, setMpvAvailable] = useState<boolean | null>(null)
   const [mpvConfig, setMpvConfig] = useState<MpvConfigType>(DEFAULT_CONFIG)
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
 
   // 加载配置并启动 mpv（合并为单一 effect，避免竞态）
   useEffect(() => {
     if (!window.videosorter || status !== 'launching') return
     let cancelled = false
+
+    // 监听下载进度
+    const unsubProgress = window.videosorter.onMpvDownloadProgress((progress) => {
+      if (!cancelled) setDownloadProgress(progress)
+    })
 
     async function launch() {
       try {
@@ -65,9 +87,10 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
           return
         }
 
-        // 4. 启动 mpv
+        // 4. 启动 mpv（内部会自动下载如果 mpv.exe 不存在）
         const { success, error } = await window.videosorter!.mpvLaunch(filePath, mergedConfig)
         if (cancelled) return
+        setDownloadProgress(null)
         if (success) {
           setStatus('playing')
         } else {
@@ -76,6 +99,7 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
         }
       } catch (e) {
         if (cancelled) return
+        setDownloadProgress(null)
         setStatus('error')
         setErrorMsg(`启动 mpv 异常: ${String(e)}`)
       }
@@ -83,7 +107,10 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
 
     launch()
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      unsubProgress()
+    }
   }, [filePath, status])
 
   useEffect(() => {
@@ -230,6 +257,41 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
             </div>
             <div className="text-xs text-zinc-500 pt-2 border-t border-white/10">修改设置后需重新打开视频。超分和补帧对显卡配置有一定要求。</div>
           </div>
+        </div>
+      )}
+
+      {/* Launching / Downloading */}
+      {status === 'launching' && (
+        <div className="rounded-lg bg-zinc-800 p-6 max-w-md text-center">
+          {downloadProgress ? (
+            <>
+              <Download className="size-8 mx-auto mb-3 text-violet-400 animate-pulse" />
+              <p className="text-sm text-white mb-1">
+                {STAGE_LABELS[downloadProgress.stage] || downloadProgress.message}
+              </p>
+              {downloadProgress.stage === 'downloading_mpv' && (
+                <div className="mt-3">
+                  <div className="w-full bg-zinc-700 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-violet-500 rounded-full transition-all duration-300"
+                      style={{ width: `${downloadProgress.percent}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-1">{downloadProgress.percent}%</p>
+                </div>
+              )}
+              {downloadProgress.stage !== 'downloading_mpv' && (
+                <Loader2 className="size-5 mx-auto mt-3 text-zinc-400 animate-spin" />
+              )}
+              <p className="text-xs text-zinc-500 mt-2">首次使用需下载 mpv 播放器（约 50MB），请耐心等待...</p>
+            </>
+          ) : (
+            <>
+              <Loader2 className="size-8 mx-auto mb-3 text-violet-400 animate-spin" />
+              <p className="text-sm text-white">正在启动 mpv...</p>
+              <p className="text-xs text-zinc-500 mt-1 truncate max-w-[250px]">{videoName}</p>
+            </>
+          )}
         </div>
       )}
 

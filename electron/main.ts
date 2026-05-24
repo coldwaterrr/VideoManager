@@ -82,10 +82,13 @@ import {
   testAIConnection,
   aiClassifyVideosStream,
 } from './ai'
-import { setupMpvIPC, setMpvWindowRef } from './mpv'
+import { setupMpvIPC, setMpvWindowRef, loadMpvConfig, findMpvExe } from './mpv'
 import { loadPlayerConfig, savePlayerConfig, type PlayerType } from './player-config'
+import { ensureMpvInstalled, isMpvDownloading, type MpvDownloadProgress } from './mpv-downloader'
 
 let win: BrowserWindow | null
+// AI 分类 AbortController 管理（按窗口 ID）
+const aiAbortControllers = new Map<number, AbortController>()
 
 function createWindow() {
   try {
@@ -103,7 +106,16 @@ function createWindow() {
       backgroundColor: '#09090b',
       resizable: true,
       webPreferences: {
-        preload: path.join(path.dirname(__filename), 'preload.cjs'),
+        // 开发模式下禁用 webSecurity，允许从 http://localhost 加载 file:// 视频
+        webSecurity: !isDev ? true : false,
+        preload: (() => {
+          // 开发模式：preload.cjs 可能还在 electron/ 目录（未复制到 dist-electron/）
+          const distPreload = path.join(path.dirname(__filename), 'preload.cjs')
+          if (fs.existsSync(distPreload)) return distPreload
+          const srcPreload = path.join(path.dirname(__filename), '..', 'electron', 'preload.cjs')
+          if (fs.existsSync(srcPreload)) return srcPreload
+          return distPreload
+        })(),
         contextIsolation: false,
         nodeIntegration: true,
       },
@@ -384,14 +396,43 @@ ipcMain.handle('ai:classify-stream', async (_event, rule: string, config: { apiK
     overview: row[4] as string | null,
   }))
 
-  return aiClassifyVideosStream(videos, rule, config, (chunk) => {
-    if (win) {
-      win.webContents.send('ai:chunk', chunk)
+  // 获取已有文件夹名称列表
+  const folderResults = db.exec(`SELECT name FROM virtual_folders ORDER BY name`)
+  const existingFolders: string[] = folderResults.length > 0
+    ? folderResults[0].values.map((row: any[]) => row[0] as string)
+    : []
+
+  // 创建 AbortController 用于取消
+  const winId = win?.id ?? 0
+  const controller = new AbortController()
+  aiAbortControllers.set(winId, controller)
+
+  try {
+    const result = await aiClassifyVideosStream(videos, rule, config, existingFolders, (chunk) => {
+      if (win && !controller.signal.aborted) {
+        win.webContents.send('ai:chunk', chunk)
+      }
+    }, controller.signal)
+    return result
+  } finally {
+    if (aiAbortControllers.get(winId) === controller) {
+      aiAbortControllers.delete(winId)
     }
-  })
+  }
 })
 
-ipcMain.handle('ai:apply', async (_event, folders: { name: string; videoIds: number[] }[]) => {
+ipcMain.handle('ai:cancel-classify', async () => {
+  const winId = win?.id ?? 0
+  const controller = aiAbortControllers.get(winId)
+  if (controller) {
+    controller.abort()
+    aiAbortControllers.delete(winId)
+    return { success: true }
+  }
+  return { success: false, message: '没有正在进行的分类任务' }
+})
+
+ipcMain.handle('ai:apply', async (_event, folders: { name: string; videoIds: number[]; existing?: boolean }[]) => {
   await ensureDatabase()
   const { database: db, databaseMeta: meta } = getDatabaseHandle()
   let created = 0
@@ -574,6 +615,26 @@ ipcMain.handle('player:save-config', async (_event, config: { defaultPlayer: Pla
   return { success: true }
 })
 
+// ========== MPV 下载 ==========
+ipcMain.handle('mpv:download', async () => {
+  if (isMpvDownloading()) {
+    return { success: false, message: '正在下载中，请稍候...' }
+  }
+  try {
+    const mpvConfig = loadMpvConfig()
+    const result = await ensureMpvInstalled(mpvConfig.mpvPath, (progress: MpvDownloadProgress) => {
+      if (win) win.webContents.send('mpv:download-progress', progress)
+    })
+    return result
+  } catch (err: any) {
+    return { success: false, message: err.message || String(err) }
+  }
+})
+
+ipcMain.handle('mpv:is-downloading', async () => {
+  return { downloading: isMpvDownloading() }
+})
+
 // ========== 窗口控制 ==========
 ipcMain.handle('win:minimize', () => {
   win?.hide()
@@ -678,6 +739,19 @@ app.whenReady().then(async () => {
     setupWindowBehaviors()
     createTray()
     setupAutoUpdater()
+
+    // 后台检查 mpv 是否安装，未安装则自动下载
+    const mpvConfig = loadMpvConfig()
+    if (!findMpvExe(mpvConfig.mpvPath) && !isMpvDownloading()) {
+      console.log('[mpv] 未找到 mpv.exe，开始后台下载...')
+      ensureMpvInstalled(mpvConfig.mpvPath, (progress: MpvDownloadProgress) => {
+        if (win) win.webContents.send('mpv:download-progress', progress)
+      }).then((result) => {
+        console.log('[mpv] 后台下载结果:', result.message)
+      }).catch((err) => {
+        console.error('[mpv] 后台下载失败:', err)
+      })
+    }
   } catch (error) {
     if (!win) {
       win = new BrowserWindow({

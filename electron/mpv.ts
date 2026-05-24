@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import net from 'node:net'
 import { spawn, ChildProcess } from 'node:child_process'
+import { ensureMpvInstalled } from './mpv-downloader'
 
 export interface MpvConfig {
   anime4k: boolean
@@ -195,9 +196,19 @@ export function setupMpvIPC() {
     const savedConfig = loadMpvConfig()
     const currentConfig = { ...savedConfig, ...config }
 
-    const mpvExe = findMpvExe(currentConfig.mpvPath)
+    let mpvExe = findMpvExe(currentConfig.mpvPath)
     if (!mpvExe) {
-      return { success: false, error: '找不到 mpv.exe，请设置 mpv 路径' }
+      // mpv.exe 未找到，尝试自动下载
+      const result = await ensureMpvInstalled(currentConfig.mpvPath, (progress) => {
+        if (win) win.webContents.send('mpv:download-progress', progress)
+      })
+      if (!result.success) {
+        return { success: false, error: result.message }
+      }
+      mpvExe = findMpvExe(currentConfig.mpvPath)
+      if (!mpvExe) {
+        return { success: false, error: 'mpv 下载完成但未能找到 mpv.exe，请检查 mpv 路径设置' }
+      }
     }
 
     if (!fs.existsSync(filePath)) {

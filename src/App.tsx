@@ -559,6 +559,13 @@ function App() {
   const [aiExpandedFolders, setAiExpandedFolders] = useState<Set<number>>(new Set())
   const [aiEditingFolderName, setAiEditingFolderName] = useState<number | null>(null)
   const [showAiNotification, setShowAiNotification] = useState(false)
+  // 进度
+  const [aiCurrentBatch, setAiCurrentBatch] = useState(0)
+  const [aiTotalBatches, setAiTotalBatches] = useState(0)
+  const [aiProgressMessage, setAiProgressMessage] = useState('')
+  const [showAiStreamDetail, setShowAiStreamDetail] = useState(false)
+  const [aiDuration, setAiDuration] = useState(0)
+  const aiStartTimeRef = useRef(0)
 
   // 自动更新相关状态
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
@@ -819,23 +826,44 @@ function App() {
     setAiPreview(null)
     setAiReasoning('')
     setAiRawContent('')
+    setAiCurrentBatch(0)
+    setAiTotalBatches(0)
+    setAiProgressMessage('正在连接 AI...')
+    setShowAiStreamDetail(false)
+    setAiDuration(0)
+    aiStartTimeRef.current = Date.now()
 
-    // 监听 AI chunk 流
-    const cleanup = window.videosorter.onAiChunk((chunk) => {
-      if (chunk.reasoning) {
-        setAiReasoning((prev) => prev + chunk.reasoning!)
-      }
-      if (chunk.content) {
-        setAiRawContent((prev) => prev + chunk.content)
+    const cleanup = window.videosorter.onAiChunk((chunk: AIChunk) => {
+      if (chunk.type === 'progress') {
+        setAiCurrentBatch(chunk.batch ?? 0)
+        setAiTotalBatches(chunk.totalBatches ?? 0)
+        setAiProgressMessage(chunk.message ?? '')
+      } else if (chunk.type === 'summary') {
+        setAiCurrentBatch(chunk.batch ?? 0)
+        // 中间结果：展示当前合并后的文件夹预览
+        if (chunk.folders) {
+          setAiPreview({ folders: chunk.folders })
+        }
+      } else if (chunk.type === 'reasoning') {
+        setAiReasoning((prev) => prev + (chunk.reasoning ?? ''))
+        setShowAiStreamDetail(true)
+      } else {
+        // type === 'content' or legacy
+        setAiRawContent((prev) => prev + (chunk.content ?? ''))
+        setShowAiStreamDetail(true)
       }
     })
 
     try {
       const result = await window.videosorter.aiClassifyStream(aiRule, aiConfig)
       cleanup()
+      setAiDuration(Date.now() - aiStartTimeRef.current)
       if (result.success && result.result) {
         setAiPreview(result.result)
         setAiMessage(`分类完成，共 ${result.result.folders.length} 个文件夹`)
+      } else if (result.message?.includes('已被取消')) {
+        setAiMessage('分类已被取消')
+        setAiProgressMessage('已取消')
       } else {
         setAiMessage(result.message || '分类失败')
       }
@@ -845,6 +873,12 @@ function App() {
     } finally {
       setAiClassifying(false)
     }
+  }
+
+  async function handleAiCancel() {
+    if (!window.videosorter?.aiCancelClassify) return
+    await window.videosorter.aiCancelClassify()
+    setAiProgressMessage('正在取消...')
   }
 
   async function handleAiApply() {
@@ -2155,32 +2189,56 @@ function App() {
               {/* 未分类视频数量 */}
               <div className="text-xs text-zinc-500">
                 待分类视频: {snapshot.videos.filter((v) => v.folderIds.length === 0).length} 部
+                {snapshot.folders.length > 0 && (
+                  <span className="ml-2">· 已有 {snapshot.folders.length} 个文件夹</span>
+                )}
               </div>
 
-              {/* 流式输出区域 */}
+              {/* 进度条 */}
+              {aiClassifying && aiTotalBatches > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-400">{aiProgressMessage}</span>
+                    <span className="text-zinc-500">{aiCurrentBatch}/{aiTotalBatches}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-violet-500 transition-all duration-300"
+                      style={{ width: `${(aiCurrentBatch / aiTotalBatches) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 流式输出区域 — 可折叠 */}
               {(aiClassifying || aiReasoning || aiRawContent) && (
-                <div className="rounded-lg border border-white/8 bg-black/20 p-3 max-h-72 overflow-auto">
-                  {aiReasoning && (
-                    <div className="mb-3">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <LoaderCircle className={`size-3 ${aiClassifying ? 'animate-spin' : ''} text-violet-400`} />
-                        <span className="text-xs font-medium text-violet-400">推理过程</span>
-                      </div>
-                      <div className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiReasoning}</div>
-                    </div>
-                  )}
-                  {aiRawContent && (
-                    <div className={aiReasoning ? 'border-t border-white/5 pt-3' : ''}>
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="text-xs font-medium text-emerald-400">分类结果</span>
-                      </div>
-                      <div className="font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiRawContent}</div>
-                    </div>
-                  )}
-                  {!aiReasoning && !aiRawContent && aiClassifying && (
-                    <div className="flex items-center gap-2 text-sm text-zinc-400">
-                      <LoaderCircle className="size-4 animate-spin text-violet-400" />
-                      <span>AI 思考中...</span>
+                <div className="rounded-lg border border-white/8 bg-black/20 overflow-hidden">
+                  <button
+                    onClick={() => setShowAiStreamDetail(!showAiStreamDetail)}
+                    className="flex items-center gap-1.5 w-full px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition"
+                  >
+                    {showAiStreamDetail ? <ChevronDown className="size-3" /> : <ChevronUp className="size-3" />}
+                    AI 推理详情
+                    {aiClassifying && <LoaderCircle className="size-3 animate-spin text-violet-400 ml-1" />}
+                  </button>
+                  {showAiStreamDetail && (
+                    <div className="px-3 pb-3 max-h-60 overflow-auto border-t border-white/5">
+                      {aiReasoning && (
+                        <div className="pt-3 mb-2">
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-xs font-medium text-violet-400">推理过程</span>
+                          </div>
+                          <div className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiReasoning}</div>
+                        </div>
+                      )}
+                      {aiRawContent && (
+                        <div className={aiReasoning ? 'border-t border-white/5 pt-2' : 'pt-3'}>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-xs font-medium text-emerald-400">原始输出</span>
+                          </div>
+                          <div className="font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiRawContent}</div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2193,9 +2251,14 @@ function App() {
                     ? 'bg-emerald-500/10 text-emerald-400'
                     : aiMessage.includes('遗漏')
                     ? 'bg-amber-500/10 text-amber-400'
+                    : aiMessage.includes('取消')
+                    ? 'bg-amber-500/10 text-amber-400'
                     : 'bg-red-500/10 text-red-400'
                 }`}>
                   {aiMessage}
+                  {aiDuration > 0 && aiMessage.includes('完成') && (
+                    <span className="ml-2 text-zinc-500">耗时 {aiDuration >= 1000 ? `${(aiDuration / 1000).toFixed(1)}s` : `${aiDuration}ms`}</span>
+                  )}
                 </div>
               )}
 
@@ -2207,15 +2270,32 @@ function App() {
                       <Eye className="size-3" />
                       <span>预览分类结果（{aiPreview.folders.length} 个文件夹）</span>
                     </div>
-                    <span className="text-xs text-zinc-500">共 {aiPreview.folders.reduce((s, f) => s + f.videoIds.length, 0)} 部视频</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-500">
+                        共 {aiPreview.folders.reduce((s, f) => s + f.videoIds.length, 0)} 部
+                      </span>
+                      <button
+                        onClick={() => {
+                          if (aiExpandedFolders.size === aiPreview!.folders.length) {
+                            setAiExpandedFolders(new Set())
+                          } else {
+                            setAiExpandedFolders(new Set(aiPreview!.folders.map((_, i) => i)))
+                          }
+                        }}
+                        className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                      >
+                        {aiExpandedFolders.size === aiPreview.folders.length ? '全部折叠' : '全部展开'}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-auto">
                     {aiPreview.folders.map((folder, idx) => {
                       const isExpanded = aiExpandedFolders.has(idx)
                       const isEditing = aiEditingFolderName === idx
                       return (
-                        <div key={idx} className="rounded-lg border border-white/8 bg-white/[0.03] overflow-hidden">
-                          {/* 文件夹头部 */}
+                        <div key={idx} className={`rounded-lg border overflow-hidden ${
+                          folder.existing ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-white/8 bg-white/[0.03]'
+                        }`}>
                           <div className="flex items-center gap-2 p-3">
                             <button
                               onClick={() => {
@@ -2238,7 +2318,7 @@ function App() {
                                     setAiPreview((prev) => {
                                       if (!prev) return prev
                                       const newFolders = [...prev.folders]
-                                      newFolders[idx] = { ...newFolders[idx], name: newName }
+                                      newFolders[idx] = { ...newFolders[idx], name: newName, existing: false }
                                       return { ...prev, folders: newFolders }
                                     })
                                   }}
@@ -2255,6 +2335,16 @@ function App() {
                                   className="text-sm font-medium text-white truncate"
                                 >
                                   {folder.name}
+                                </span>
+                              )}
+                              {folder.existing && !isEditing && (
+                                <span className="shrink-0 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                                  合并
+                                </span>
+                              )}
+                              {!folder.existing && !isEditing && (
+                                <span className="shrink-0 rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[10px] text-violet-400">
+                                  新建
                                 </span>
                               )}
                             </button>
@@ -2279,7 +2369,6 @@ function App() {
                               <X className="size-3.5" />
                             </button>
                           </div>
-                          {/* 展开的视频列表 */}
                           {isExpanded && (
                             <div className="border-t border-white/5 px-3 py-2 max-h-40 overflow-auto">
                               {folder.videoIds.map((vid) => {
@@ -2297,9 +2386,6 @@ function App() {
                         </div>
                       )
                     })}
-                    {aiPreview === null && aiPreview?.folders?.length === 0 && (
-                      <div className="text-xs text-zinc-500 text-center py-4">没有可分类的视频</div>
-                    )}
                   </div>
                 </div>
               )}
@@ -2307,7 +2393,17 @@ function App() {
 
             {/* 底部按钮 */}
             <div className="mt-4 flex gap-3 pt-3 border-t border-white/8">
-              {aiPreview ? (
+              {aiClassifying ? (
+                <div className="flex gap-3 w-full">
+                  <Button
+                    onClick={() => void handleAiCancel()}
+                    className="flex-1 h-11 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                  >
+                    <X className="mr-2 size-4" />
+                    取消分类
+                  </Button>
+                </div>
+              ) : aiPreview ? (
                 <Button
                   onClick={() => void handleAiApply()}
                   disabled={aiApplying}

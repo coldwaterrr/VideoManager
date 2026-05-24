@@ -71,6 +71,7 @@ interface AIConfig {
 interface AIClassificationFolder {
   name: string
   videoIds: number[]
+  existing?: boolean
 }
 
 interface AIClassificationResult {
@@ -80,6 +81,18 @@ interface AIClassificationResult {
 interface AITestResult {
   ok: boolean
   message: string
+}
+
+type AIChunkType = 'reasoning' | 'content' | 'progress' | 'summary'
+
+interface AIChunk {
+  type?: AIChunkType
+  reasoning?: string
+  content?: string
+  batch?: number
+  totalBatches?: number
+  message?: string
+  folders?: AIClassificationFolder[]
 }
 
 interface AIApplyResult {
@@ -99,6 +112,12 @@ interface MpvConfig {
   interpolationFps: number
   superResShader: 'anime4k' | 'fsrcnnx' | 'none'
   mpvPath: string
+}
+
+interface MpvDownloadProgress {
+  stage: 'checking' | 'downloading_7za' | 'downloading_mpv' | 'extracting' | 'installing' | 'complete' | 'error'
+  percent: number
+  message: string
 }
 
 declare global {
@@ -136,7 +155,8 @@ declare global {
       aiSaveConfig: (config: AIConfig) => Promise<{ success: boolean }>
       aiTestConnection: (config: AIConfig) => Promise<AITestResult>
       aiClassifyStream: (rule: string, config: AIConfig) => Promise<{ success: boolean; message: string; result?: AIClassificationResult }>
-      onAiChunk: (callback: (chunk: { reasoning?: string; content: string }) => void) => () => void
+      onAiChunk: (callback: (chunk: AIChunk) => void) => () => void
+      aiCancelClassify: () => Promise<{ success: boolean }>
       aiApply: (folders: AIClassificationFolder[]) => Promise<AIApplyResult>
       // MPV Player
       mpvLaunch: (filePath: string, config?: Partial<MpvConfig>) => Promise<{ success: boolean; error?: string; socket?: string }>
@@ -146,6 +166,9 @@ declare global {
       mpvGetConfig: () => Promise<MpvConfig>
       mpvSaveConfig: (config: MpvConfig) => Promise<{ success: boolean }>
       mpvCheckAvailable: () => Promise<{ available: boolean; path: string }>
+      mpvDownload: () => Promise<{ success: boolean; message: string }>
+      mpvIsDownloading: () => Promise<{ downloading: boolean }>
+      onMpvDownloadProgress: (callback: (progress: MpvDownloadProgress) => void) => () => void
       onMpvEnd: (callback: () => void) => () => void
       // Player selection
       playerGetConfig: () => Promise<{ defaultPlayer: string }>
