@@ -12,7 +12,10 @@
     "dist-electron"
   ],
   "extraFiles": [
-    "mpv/**"
+    {
+      "from": "mpv",
+      "to": "mpv"
+    }
   ],
   "mac": {
     "target": [

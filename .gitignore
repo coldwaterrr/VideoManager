@@ -28,11 +28,13 @@ dist-build/
 *.backup
 *.backup*
 
-# mpv binaries (too large for git, user downloads separately)
+# mpv binaries (too large for git, downloaded by prebuild script)
 mpv/d3dcompiler_43.dll
 mpv/mpv.com
 mpv/mpv.exe
-mpv/mpv/
+mpv/libmpv-2.dll
+mpv/libmpv.dll.a
+mpv/updater.bat
 
 # Editor directories and files
 .vscode/*

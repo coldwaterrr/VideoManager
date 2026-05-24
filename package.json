@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && electron-builder --publish never",
+    "prebuild": "node scripts/download-mpv.cjs",
     "preview": "vite preview",
+    "download:mpv": "node scripts/download-mpv.cjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {

@@ -121,7 +121,7 @@ async function getLatestMpvDownloadUrl(): Promise<{ url: string; filename: strin
   const assets: any[] = release.assets || []
 
   const mpvAsset = assets.find((a: any) =>
-    a.name.includes('x86_64') && a.name.endsWith('.7z') && !a.name.includes('d3d'),
+    a.name.includes('mpv') && !a.name.includes('dev') && a.name.includes('x86_64') && a.name.endsWith('.7z') && !a.name.includes('d3d'),
   )
 
   if (!mpvAsset) {
@@ -166,7 +166,7 @@ async function getSevenZip(targetDir: string, onProgress?: (p: MpvDownloadProgre
 }
 
 function findAndCopyMpvFiles(srcDir: string, targetDir: string, depth = 0): boolean {
-  if (depth > 3) return false
+  if (depth > 5) return false
 
   // Check current dir for mpv.exe
   for (const name of ['mpv.exe', 'mpv.com']) {

@@ -45,12 +45,8 @@ export function loadMpvConfig(): MpvConfig {
     const configPath = getMpvConfigPath()
     if (fs.existsSync(configPath)) {
       const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-      const merged = { ...def, ...data }
-      // mpvPath 可能为空字符串，需要回退到默认值
-      if (!merged.mpvPath) {
-        merged.mpvPath = def.mpvPath
-      }
-      return merged
+      // mpvPath 始终使用安装目录，不受保存的旧路径影响
+      return { ...def, ...data, mpvPath: def.mpvPath }
     }
   } catch {
     // ignore
@@ -59,21 +55,16 @@ export function loadMpvConfig(): MpvConfig {
 }
 
 export function saveMpvConfig(config: MpvConfig): void {
-  const savedConfig = loadMpvConfig()
-  const mergedConfig = { ...savedConfig, ...config }
-  // mpvPath 不能为空，否则用默认值
-  if (!mergedConfig.mpvPath) {
-    mergedConfig.mpvPath = defaultConfig().mpvPath
-  }
+  const def = defaultConfig()
+  const merged = { ...loadMpvConfig(), ...config, mpvPath: def.mpvPath }
   const configPath = getMpvConfigPath()
-  console.log('[mpv] saveConfig:', configPath, JSON.stringify(mergedConfig))
-  // 确保目录存在
+  console.log('[mpv] saveConfig:', configPath, JSON.stringify(merged))
   const dir = path.dirname(configPath)
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
   }
   try {
-    fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2))
+    fs.writeFileSync(configPath, JSON.stringify(merged, null, 2))
   } catch (err) {
     console.error('[mpv] saveConfig error:', err)
   }
