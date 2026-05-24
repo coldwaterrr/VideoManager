@@ -532,6 +532,19 @@ function App() {
 
   // 播放器选择
   const [defaultPlayer, setDefaultPlayer] = useState<'web' | 'mpv' | 'system'>('web')
+  // MPV 下载通知
+  const [mpvDownload, setMpvDownload] = useState<{ stage: string; percent: number; message: string } | null>(null)
+
+  useEffect(() => {
+    if (!window.videosorter) return
+    const unsub = window.videosorter.onMpvDownloadProgress((progress) => {
+      setMpvDownload(progress)
+      if (progress.stage === 'complete' || progress.stage === 'error') {
+        setTimeout(() => setMpvDownload(null), 5000)
+      }
+    })
+    return unsub
+  }, [])
 
   useEffect(() => {
     window.videosorter?.playerGetConfig().then((c) => {
@@ -2670,6 +2683,48 @@ function App() {
             setPlayingVideo({ path: video.absolutePath, name: video.title || video.name, index })
           }}
         />
+      )}
+
+      {/* MPV 下载通知 */}
+      {mpvDownload && (
+        <div className={`fixed bottom-4 right-4 z-[100] rounded-xl px-4 py-3 shadow-2xl backdrop-blur-sm border text-sm transition-all ${
+          mpvDownload.stage === 'error'
+            ? 'bg-red-900/90 border-red-700 text-red-200'
+            : mpvDownload.stage === 'complete'
+              ? 'bg-emerald-900/90 border-emerald-700 text-emerald-200'
+              : 'bg-zinc-900/95 border-white/10 text-zinc-200'
+        }`}>
+          <div className="flex items-center gap-3">
+            {mpvDownload.stage !== 'error' && mpvDownload.stage !== 'complete' && (
+              <svg className="size-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            {mpvDownload.stage === 'complete' && <span className="text-base shrink-0">✅</span>}
+            {mpvDownload.stage === 'error' && <span className="text-base shrink-0">❌</span>}
+            <div>
+              <p className="text-xs font-medium">{mpvDownload.message}</p>
+              {mpvDownload.stage === 'downloading_mpv' && mpvDownload.percent > 0 && (
+                <div className="mt-1.5 w-48">
+                  <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-violet-400 rounded-full transition-all duration-300"
+                      style={{ width: `${mpvDownload.percent}%` }}
+                    />
+                  </div>
+                  <p className="text-right text-[10px] mt-0.5 text-zinc-400">{mpvDownload.percent}%</p>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setMpvDownload(null)}
+              className="ml-3 text-xs opacity-50 hover:opacity-100 shrink-0"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
