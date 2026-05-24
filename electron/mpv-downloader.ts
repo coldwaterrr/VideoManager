@@ -1,7 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import https from 'node:https'
+import http from 'node:http'
 import { execSync } from 'node:child_process'
+import { URL } from 'node:url'
 
 export interface MpvDownloadProgress {
   stage: 'checking' | 'downloading_7za' | 'downloading_mpv' | 'extracting' | 'installing' | 'complete' | 'error'
@@ -42,50 +45,82 @@ function getTempDir(): string {
   return dir
 }
 
-async function downloadFile(url: string, destPath: string, onProgress?: (percent: number) => void): Promise<void> {
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': 'VideoSorter/1.0' },
-    redirect: 'follow',
-  })
-
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status}: ${resp.statusText}`)
-  }
-
-  const total = parseInt(resp.headers.get('content-length') || '0')
-  const reader = resp.body!.getReader()
-  const chunks: Uint8Array[] = []
-  let downloaded = 0
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-    downloaded += value.length
-    if (total && onProgress) {
-      onProgress(Math.round((downloaded / total) * 100))
+function httpsRequest(urlStr: string, options?: { headers?: Record<string, string>; maxRedirects?: number }): Promise<{ statusCode: number; headers: Record<string, string>; stream: http.IncomingMessage }> {
+  return new Promise((resolve, reject) => {
+    const maxRedirects = options?.maxRedirects ?? 5
+    const doRequest = (url: string, redirects: number) => {
+      const parsed = new URL(url)
+      const mod = parsed.protocol === 'https:' ? https : http
+      const req = mod.get(
+        url,
+        {
+          headers: {
+            ...options?.headers,
+            'User-Agent': 'VideoSorter/1.0',
+          },
+        },
+        (res) => {
+          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            if (redirects >= maxRedirects) {
+              reject(new Error(`Too many redirects (${res.statusCode})`))
+              return
+            }
+            const redirectUrl = new URL(res.headers.location, url).toString()
+            res.resume() // drain response
+            doRequest(redirectUrl, redirects + 1)
+            return
+          }
+          if (!res.statusCode || res.statusCode >= 400) {
+            reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage || 'error'}`))
+            res.resume()
+            return
+          }
+          resolve({ statusCode: res.statusCode, headers: res.headers as Record<string, string>, stream: res })
+        },
+      )
+      req.on('error', reject)
+      req.setTimeout(30000, () => { req.destroy(); reject(new Error('Request timeout')) })
     }
-  }
+    doRequest(urlStr, 0)
+  })
+}
 
-  fs.writeFileSync(destPath, Buffer.concat(chunks))
+function readStreamToBuffer(stream: http.IncomingMessage, contentLength: number, onProgress?: (percent: number) => void): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let downloaded = 0
+    stream.on('data', (chunk: Buffer) => {
+      chunks.push(chunk)
+      downloaded += chunk.length
+      if (contentLength && onProgress) {
+        onProgress(Math.round((downloaded / contentLength) * 100))
+      }
+    })
+    stream.on('end', () => resolve(Buffer.concat(chunks)))
+    stream.on('error', reject)
+  })
+}
+
+function readStreamToText(stream: http.IncomingMessage): Promise<string> {
+  return readStreamToBuffer(stream, 0).then((buf) => buf.toString('utf-8'))
+}
+
+async function downloadFile(url: string, destPath: string, onProgress?: (percent: number) => void): Promise<void> {
+  const { headers, stream } = await httpsRequest(url)
+  const total = parseInt(headers['content-length'] || '0')
+  const buffer = await readStreamToBuffer(stream, total, onProgress)
+  fs.writeFileSync(destPath, buffer)
 }
 
 async function getLatestMpvDownloadUrl(): Promise<{ url: string; filename: string }> {
-  const resp = await fetch(GITHUB_API_LATEST, {
-    headers: {
-      'User-Agent': 'VideoSorter/1.0',
-      'Accept': 'application/vnd.github+json',
-    },
+  const { stream } = await httpsRequest(GITHUB_API_LATEST, {
+    headers: { 'Accept': 'application/vnd.github+json' },
   })
-
-  if (!resp.ok) {
-    throw new Error(`GitHub API returned ${resp.status}`)
-  }
-
-  const release = await resp.json() as any
+  const text = await readStreamToText(stream)
+  const release = JSON.parse(text) as any
   const assets: any[] = release.assets || []
 
-  const mpvAsset = assets.find((a) =>
+  const mpvAsset = assets.find((a: any) =>
     a.name.includes('x86_64') && a.name.endsWith('.7z') && !a.name.includes('d3d'),
   )
 
