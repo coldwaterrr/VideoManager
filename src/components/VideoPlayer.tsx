@@ -1,3 +1,4 @@
+import { localFileUrl, seekTarget } from '../lib/playback'
 import { useEffect, useRef, useState } from 'react'
 import { X, Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react'
 
@@ -23,6 +24,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [showPlaylist, setShowPlaylist] = useState(false)
+  const [playbackError, setPlaybackError] = useState('')
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
     }
 
     const handleMetadata = () => {
-      setDuration(video.duration)
+      setDuration(Number.isFinite(video.duration) ? video.duration : 0)
     }
 
     const handlePlay = () => setIsPlaying(true)
@@ -61,11 +63,14 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
     const video = videoRef.current
     if (!video) return
     setCurrentTime(0)
+    setDuration(0)
+    setPlaybackError('')
     video.play().catch(() => {})
   }, [filePath])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.matches('input, textarea, select, [contenteditable=true]')) return
       if (e.key === 'Escape') {
         onClose()
       } else if (e.key === ' ') {
@@ -74,7 +79,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
       } else if (e.key === 'f') {
         toggleFullscreen()
       } else if (e.key === 'm') {
-        setIsMuted(!isMuted)
+        toggleMute()
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
         skipBackward()
@@ -86,7 +91,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, isMuted])
+  }, [onClose, isMuted, isFullscreen])
 
   const togglePlay = () => {
     if (videoRef.current) {
@@ -102,7 +107,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
     if (!containerRef.current) return
 
     try {
-      if (!isFullscreen) {
+      if (!document.fullscreenElement) {
         await containerRef.current.requestFullscreen()
         setIsFullscreen(true)
       } else {
@@ -164,17 +169,23 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
     }
   }
 
-  const skipBackward = () => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5)
-    }
+  const seek = (delta: number) => {
+    const video = videoRef.current
+    if (!video) return
+    const target = seekTarget(video.currentTime, video.duration, delta)
+    if (target !== null) { video.currentTime = target; setCurrentTime(target) }
   }
+  const skipBackward = () => seek(-5)
+  const skipForward = () => seek(5)
 
-  const skipForward = () => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 5)
+  useEffect(() => {
+    const syncFullscreen = () => setIsFullscreen(document.fullscreenElement === containerRef.current)
+    document.addEventListener('fullscreenchange', syncFullscreen)
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreen)
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
     }
-  }
+  }, [])
 
   return (
     <div
@@ -249,11 +260,17 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
       {/* 视频元素 */}
       <video
         ref={videoRef}
-        src={`file:///${filePath.replace(/\\/g, '/')}`}
+        src={localFileUrl(filePath)}
+        muted={isMuted}
+        onClick={togglePlay}
+        onDoubleClick={() => void toggleFullscreen()}
+        onContextMenu={(event) => { event.preventDefault(); skipForward() }}
+        onError={() => setPlaybackError('无法解码或读取此视频，请检查文件路径，或切换到 MPV 播放器。')}
         className="h-full w-full object-contain"
         playsInline
       />
 
+      {playbackError && <div role="alert" className="absolute rounded-xl bg-zinc-900 p-5 text-sm text-amber-300">{playbackError}</div>}
       {/* 播放器控制条 */}
       <div
         className={`absolute bottom-0 left-0 right-0 z-10 flex flex-col gap-2 bg-gradient-to-t from-black via-black/80 to-transparent px-6 py-8 transition-opacity ${
@@ -372,7 +389,7 @@ export function VideoPlayer({ filePath, videoName, onClose, onNext, onPrevious, 
 
         {/* 快捷键提示 */}
         <div className="mt-2 text-xs text-white/60">
-          空格: 播放/暂停 | ←/→: 快退/快进5s | M: 静音 | F: 全屏
+          空格: 播放/暂停 | ←/→ 或鼠标右键: 快退/快进5s | M: 静音 | F: 全屏
         </div>
       </div>
     </div>

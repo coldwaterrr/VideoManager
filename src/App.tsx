@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp, Sparkles, Eye, Check, AlertTriangle, Trash2, Download } from 'lucide-react'
+import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp, Sparkles, Eye, Check, Trash2, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TitleBar } from '@/components/TitleBar'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { MpvPlayer } from '@/components/MpvPlayer'
 import { PlayerSelector } from '@/components/PlayerSelector'
+import { LibraryTools } from '@/components/LibraryTools'
+import { localFileUrl } from '@/lib/playback'
 
 type SidebarFolder = {
   id: string
@@ -60,6 +62,7 @@ const previewSnapshot: LibrarySnapshot = {
       fileSize: 152_000_000,
       durationSeconds: 138,
       modifiedAt: new Date().toISOString(),
+      addedAt: new Date().toISOString(),
       folderIds: [1],
     },
     {
@@ -69,6 +72,7 @@ const previewSnapshot: LibrarySnapshot = {
       fileSize: 1_200_000_000,
       durationSeconds: 1122,
       modifiedAt: new Date().toISOString(),
+      addedAt: new Date().toISOString(),
       folderIds: [2],
     },
     {
@@ -78,6 +82,7 @@ const previewSnapshot: LibrarySnapshot = {
       fileSize: 426_000_000,
       durationSeconds: 571,
       modifiedAt: new Date().toISOString(),
+      addedAt: new Date().toISOString(),
       folderIds: [],
     },
   ],
@@ -100,7 +105,7 @@ function formatBytes(bytes: number) {
 // 从文本中提取标签（字母数字组合，长度>=2，支持中文）
 function extractTags(text: string): string[] {
   const tags = new Set<string>()
-  
+
   // 提取字母数字和中文组合
   const matches = text.toLowerCase().match(/[a-z0-9\u4e00-\u9fa5]+/g) || []
   for (const match of matches) {
@@ -108,7 +113,7 @@ function extractTags(text: string): string[] {
       tags.add(match)
     }
   }
-  
+
   return Array.from(tags)
 }
 
@@ -119,13 +124,13 @@ function generateVideoTags(
   folderNames: string[]
 ): string[] {
   const tags = new Set<string>()
-  
+
   // 从文件名提取
   const nameWithoutExt = videoName.replace(/\.[^/.]+$/, '')
   for (const tag of extractTags(nameWithoutExt)) {
     tags.add(tag)
   }
-  
+
   // 从路径提取（最后两级目录）
   const pathParts = absolutePath.split(/[\\/]/).filter(Boolean)
   if (pathParts.length >= 2) {
@@ -133,14 +138,14 @@ function generateVideoTags(
       tags.add(tag)
     }
   }
-  
+
   // 从文件夹名提取
   for (const folderName of folderNames) {
     for (const tag of extractTags(folderName)) {
       tags.add(tag)
     }
   }
-  
+
   return Array.from(tags).sort()
 }
 
@@ -197,41 +202,44 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
 
   // 生成视频封面 - 从随机位置截取
   useEffect(() => {
+    if (isPreviewMode) return
     const videoEl = document.createElement('video')
     videoEl.crossOrigin = 'anonymous'
-    videoEl.preload = 'auto'
+    videoEl.preload = 'metadata'
     videoEl.muted = true
-    
+
     videoEl.onloadedmetadata = () => {
       // 随机选取封面时间点
       videoEl.currentTime = getRandomThumbnailTime(videoEl.duration)
     }
-    
+
     videoEl.onseeked = () => {
       const canvas = document.createElement('canvas')
-      canvas.width = videoEl.videoWidth
-      canvas.height = videoEl.videoHeight
+      canvas.width = Math.min(640, videoEl.videoWidth)
+      canvas.height = Math.round(canvas.width * videoEl.videoHeight / videoEl.videoWidth)
       const ctx = canvas.getContext('2d')
       if (ctx) {
-        ctx.drawImage(videoEl, 0, 0)
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height)
         setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8))
       }
     }
-    
+
     videoEl.onerror = () => {
       // 如果无法加载视频，保持使用渐变背景
     }
-    
+
     try {
-      videoEl.src = `file:///${video.absolutePath.replace(/\\/g, '/')}`
+      videoEl.src = localFileUrl(video.absolutePath)
     } catch (e) {
       // 忽略错误
     }
-    
+
     return () => {
-      videoEl.src = ''
+      videoEl.pause()
+      videoEl.removeAttribute('src')
+      videoEl.load()
     }
-  }, [video.absolutePath])
+  }, [video.absolutePath, isPreviewMode])
 
   // 多段随机预览：生成5个时间点，每段2-3秒
   // 使用 timeupdate 事件驱动，避免 seek 冲突
@@ -348,12 +356,12 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
           )}
-          
+
           {/* 悬停预览视频 */}
           {isHovering && !isPreviewMode && (
             <video
               ref={previewRef}
-              src={`file:///${video.absolutePath.replace(/\\/g, '/')}`}
+              src={localFileUrl(video.absolutePath)}
               className="absolute inset-0 size-full object-cover"
               muted
               playsInline
@@ -362,7 +370,7 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
               onTimeUpdate={handlePreviewTimeUpdate}
             />
           )}
-          
+
           <div className="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100">
             <div className="flex size-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
               <svg className="size-6 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -432,9 +440,9 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
         </div>
       </div>
 
-      <div className="mt-4 space-y-3">
-        <div className="text-xs uppercase tracking-[0.24em] text-zinc-600">归类到虚拟文件夹</div>
-        <div className="flex flex-wrap gap-2">
+      <details className="mt-3 border-t border-zinc-800 pt-3">
+        <summary className="cursor-pointer text-xs text-zinc-400">分类：{folders.filter(folder => video.folderIds.includes(folder.id)).map(folder => folder.name).join('、') || '未分类'} <span className="text-zinc-600">· 编辑</span></summary>
+        <div className="mt-3 flex flex-wrap gap-2">
         {folders.map((folder: VirtualFolderRecord) => {
          const assigned = video.folderIds.includes(folder.id)
 
@@ -459,7 +467,7 @@ function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onTogg
          )
        })}
        </div>
-     </div>
+     </details>
     </article>
   )
 }
@@ -470,26 +478,28 @@ function App() {
   const [keyword, setKeyword] = useState('')
   const [newFolderName, setNewFolderName] = useState('')
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
-  const [isPreviewMode, setIsPreviewMode] = useState(false)
+  const [isPreviewMode, setIsPreviewMode] = useState(!window.videosorter)
   const [isScanning, setIsScanning] = useState(false)
   const [isMutatingFolder, setIsMutatingFolder] = useState(false)
-  const [isCleaningUp, setIsCleaningUp] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [pendingVideoId, setPendingVideoId] = useState<number | null>(null)
   const [statusText, setStatusText] = useState('正在加载资源库…')
-  const [snapshot, setSnapshot] = useState<LibrarySnapshot>(previewSnapshot)
+  const [snapshot, setSnapshot] = useState<LibrarySnapshot>(() => window.videosorter ? { ...previewSnapshot, videos: [], folders: [], lastScanDirectory: null, lastScannedAt: null, databaseMeta: { databasePath: '正在加载…', tables: [] } } : previewSnapshot)
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null)
   const [scannedFiles, setScannedFiles] = useState<string[]>([])
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 12
-  
+  const [pageSize, setPageSize] = useState(24)
+  const [toolsTab, setToolsTab] = useState<'monitor' | 'cleanup' | 'conditional' | 'rules' | null>(null)
+  const [batchFolderId, setBatchFolderId] = useState('')
+  const [renamingFolder, setRenamingFolder] = useState<{ id: number; name: string } | null>(null)
+
   // 扫描筛选器
   const [showFilter, setShowFilter] = useState(false)
   const [filterMinSize, setFilterMinSize] = useState(0) // MB
   const [filterMaxSize, setFilterMaxSize] = useState(0) // MB, 0表示不限制
-  const [filterFormats, setFilterFormats] = useState<string[]>(['.mp4', '.mkv', '.avi', '.mov', '.wmv'])
-  
+  const [filterFormats, setFilterFormats] = useState<string[]>(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.m4v', '.flv', '.ts', '.mts', '.m2ts', '.mpeg', '.mpg'])
+
   // 标签相关状态
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
@@ -518,6 +528,7 @@ function App() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // 内置播放器状态
+  const [playbackQueue, setPlaybackQueue] = useState<VideoRecord[]>([])
   const [playingVideo, setPlayingVideo] = useState<{ path: string; name: string; index: number } | null>(null)
 
   // MPV 播放器相关状态
@@ -592,17 +603,17 @@ function App() {
     for (const folder of snapshot.folders) {
       folderMap.set(folder.id, folder.name)
     }
-    
+
     return snapshot.videos.map((video) => {
       const videoFolderNames = video.folderIds
         .map((id) => folderMap.get(id))
         .filter((name): name is string => !!name)
-      
+
       const tags = generateVideoTags(video.name, video.absolutePath, videoFolderNames)
       return { ...video, tags }
     })
   }, [snapshot.videos, snapshot.folders])
-  
+
   // 计算所有标签
   useEffect(() => {
     const tagCounts = new Map<string, number>()
@@ -611,15 +622,17 @@ function App() {
         tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1)
       }
     }
-    
+
     const tags = Array.from(tagCounts.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
-    
+
     setAllTags(tags)
   }, [videosWithTags])
 
   useEffect(() => {
+    let unsubscribeScan: (() => void) | undefined
+    let disposed = false
     async function bootstrap() {
       if (!window.videosorter) {
         setIsPreviewMode(true)
@@ -630,6 +643,7 @@ function App() {
 
       try {
         const nextSnapshot = await window.videosorter.getLibrarySnapshot()
+        if (disposed) return
         setSnapshot(nextSnapshot)
         setStatusText(
           nextSnapshot.videos.length > 0
@@ -637,23 +651,32 @@ function App() {
             : '数据库已初始化，点击"扫描目录"开始导入本地视频。',
         )
 
-        window.videosorter.onScanProgress((progress) => {
+        unsubscribeScan = window.videosorter.onScanProgress((progress) => {
           setScanProgress(progress)
           if (progress.type === 'found' && progress.filePath) {
-            setScannedFiles((prev) => [...prev, progress.filePath!])
+            setScannedFiles((prev) => [...prev.slice(-99), progress.filePath!])
           }
           if (progress.type === 'complete') {
-            setStatusText(progress.message)
+            setStatusText(progress.message || '')
           }
         })
-      } catch {
-        setIsPreviewMode(true)
-        setSnapshot(previewSnapshot)
-        setStatusText('桌面桥接未就绪，已回退到预览数据。')
+      } catch (error) {
+        if (disposed) return
+        setSnapshot({ ...previewSnapshot, videos: [], folders: [] })
+        setStatusText(`资源库加载失败：${String(error)}`)
       }
     }
 
     void bootstrap()
+    return () => { disposed = true; unsubscribeScan?.() }
+  }, [])
+
+  useEffect(() => {
+    if (!window.videosorter) return
+    return window.videosorter.onMonitorUpdate(event => {
+      if (event.snapshot) setSnapshot(event.snapshot)
+      if (event.message || event.error) setStatusText(event.message || `自动检测失败：${event.error}`)
+    })
   }, [])
 
   // TMDB 相关函数
@@ -767,6 +790,12 @@ function App() {
       const nextSnapshot = await window.videosorter.dbSelectDatabase(databasePath)
       setSnapshot(nextSnapshot)
       setCurrentDbPath(databasePath)
+      setPlayingVideo(null)
+      setAiPreview(null)
+      setShowAiNotification(false)
+      setSelectedVideoIds(new Set())
+      setActiveFolderId('all')
+      setToolsTab(null)
       setStatusText(`已切换数据库: ${databasePath.split(/[\\/]/).pop()}`)
       setShowDbSelector(false)
     } catch (error) {
@@ -1026,11 +1055,14 @@ function App() {
       const matchesKeyword =
         normalizedKeyword.length === 0 ||
         video.name.toLowerCase().includes(normalizedKeyword) ||
+        (video.title || '').toLowerCase().includes(normalizedKeyword) ||
         video.absolutePath.toLowerCase().includes(normalizedKeyword)
 
       if (!matchesKeyword) {
         return false
       }
+
+      if (selectedTag && !video.tags.includes(selectedTag)) return false
 
       if (activeFolderId === 'all') {
         return true
@@ -1073,7 +1105,16 @@ function App() {
   // 切换文件夹或搜索时重置到第一页
   useEffect(() => {
     setCurrentPage(1)
-  }, [activeFolderId, keyword, selectedTag])
+  }, [activeFolderId, keyword, selectedTag, pageSize])
+
+  useEffect(() => { setCurrentPage(page => Math.min(page, Math.max(1, totalPages))) }, [totalPages])
+  useEffect(() => {
+    const visible = new Set(sortedVideos.map(video => video.id))
+    setSelectedVideoIds(previous => new Set([...previous].filter(id => visible.has(id))))
+  }, [sortedVideos])
+  useEffect(() => {
+    if (activeFolderId.startsWith('folder-') && !snapshot.folders.some(folder => `folder-${folder.id}` === activeFolderId)) setActiveFolderId('all')
+  }, [snapshot.folders, activeFolderId])
 
   const sidebarFolders = useMemo<SidebarFolder[]>(() => {
     const allVideosCount = snapshot.videos.length
@@ -1112,6 +1153,7 @@ function App() {
       }
       const result = await window.videosorter.scanDirectory(filterOptions)
       setSnapshot(result.snapshot)
+      if (!result.cancelled && result.snapshot.scanSummary) setStatusText(`扫描完成：新增 ${result.snapshot.scanSummary.added}，更新 ${result.snapshot.scanSummary.updated}，未变化 ${result.snapshot.scanSummary.unchanged}`)
       if (result.cancelled) {
         setStatusText('已取消目录选择。')
         setScanProgress(null)
@@ -1195,9 +1237,10 @@ function App() {
 
   function handleOpenVideo(video: VideoRecord) {
     if (defaultPlayer === 'system') {
-      window.videosorter?.openVideo(video.absolutePath)
+      void window.videosorter?.openVideo(video.absolutePath).then(result => { if (!result.success) setStatusText(result.error || '打开视频失败') })
       return
     }
+    setPlaybackQueue(sortedVideos)
     const playIndex = sortedVideos.findIndex((v) => v.id === video.id)
     setPlayingVideo({
       path: video.absolutePath,
@@ -1206,24 +1249,26 @@ function App() {
     })
   }
 
-  async function handleCleanupUnsupported() {
-    if (!window.videosorter) {
-      setStatusText('浏览器预览模式不支持清理操作。')
-      return
-    }
-    setIsCleaningUp(true)
-    setStatusText('正在清理不支持的视频格式...')
+  async function handleRescan() {
+    if (!window.videosorter) return
+    setIsScanning(true)
     try {
-      const result = await window.videosorter.cleanupUnsupported()
-      setSnapshot(result.snapshot)
-      setStatusText(`清理完成，已删除 ${result.deletedCount} 条记录。`)
-    } catch (error) {
-      setStatusText(error instanceof Error ? error.message : '清理失败。')
-    } finally {
-      setIsCleaningUp(false)
-    }
+      const result = await window.videosorter.rescanDirectory({ minSizeMB: filterMinSize, maxSizeMB: filterMaxSize, formats: filterFormats })
+      setSnapshot(result)
+      setStatusText(`增量扫描完成：新增 ${result.scanSummary?.added || 0}，更新 ${result.scanSummary?.updated || 0}`)
+    } catch (error) { setStatusText(String(error)) }
+    finally { setIsScanning(false) }
   }
-
+  async function handleBatchClassify(mode: 'add' | 'remove') {
+    if (!window.videosorter || !batchFolderId) return
+    setIsMutatingFolder(true)
+    try {
+      setSnapshot(await window.videosorter.batchClassify(Array.from(selectedVideoIds), Number(batchFolderId), mode))
+      setSelectedVideoIds(new Set())
+      setStatusText(mode === 'add' ? '已批量加入分类。' : '已批量移出分类。')
+    } catch (error) { setStatusText(String(error)) }
+    finally { setIsMutatingFolder(false) }
+  }
   function handleToggleSelect(videoId: number) {
     setSelectedVideoIds((prev) => {
       const next = new Set(prev)
@@ -1254,7 +1299,7 @@ function App() {
       return
     }
     const count = selectedVideoIds.size
-    if (!confirm(`确定要删除选中的 ${count} 个视频记录吗？`)) {
+    if (!confirm(`确定从资源库移除选中的 ${count} 条记录吗？原视频文件会保留。`)) {
       return
     }
     setIsDeleting(true)
@@ -1274,60 +1319,38 @@ function App() {
   return (
     <div className="min-h-screen bg-transparent text-zinc-50" onClick={() => setContextMenuFolder(null)}>
       <TitleBar />
-      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col px-6 pb-6">
-        <header className="flex flex-col gap-5 pb-6 pt-2 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mx-auto flex max-w-[1920px] flex-col px-4 pb-6">
+        <header className="flex flex-col gap-4 pb-5 pt-2 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.06] text-white shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
               <Clapperboard className="size-5" />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">VideoSorter</div>
-              <div className="mt-1 text-2xl font-semibold tracking-tight text-white">本地视频映射管理</div>
+              <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">VideoManager</div>
+              <div className="mt-1 text-2xl font-semibold tracking-tight text-white">我的视频库</div>
             </div>
           </div>
 
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-5 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.35)] xl:mx-0">
+          <div className="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-5 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.35)] md:mx-0">
             <Search className="size-5 shrink-0 text-zinc-500" />
             <Input
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索视频名称或绝对路径"
+              aria-label="搜索视频"
+              placeholder="搜索名称、影视标题或路径"
               className="h-auto border-0 bg-transparent px-0 py-0 text-base text-zinc-50 shadow-none placeholder:text-zinc-500 focus-visible:ring-0 focus:placeholder-transparent"
             />
           </div>
         </header>
 
-        <div className="grid flex-1 grid-cols-1 gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="flex min-h-[760px] flex-col rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 backdrop-blur-md min-w-[280px]">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-white">资源库状态</div>
-                <div className="rounded-lg border border-zinc-800 px-3 py-1 text-[11px] text-zinc-400">
-                  {isPreviewMode ? '预览模式' : '桌面模式'}
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-white/[0.04] p-3">
-                  <div className="text-xs text-zinc-500">视频总数</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{snapshot.videos.length}</div>
-                </div>
-                <div className="rounded-2xl bg-white/[0.04] p-3">
-                  <div className="text-xs text-zinc-500">自定义文件夹</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{snapshot.folders.length}</div>
-                </div>
-              </div>
-              <div className="mt-4 rounded-2xl bg-white/[0.04] p-3 text-xs text-zinc-400">
-                <div className="flex items-center gap-2 text-zinc-200">
-                  <Database className="size-3.5" />
-                  SQLite
-                </div>
-                <div className="mt-2 truncate">{snapshot.databaseMeta.databasePath}</div>
-              </div>
+        <div className="grid flex-1 grid-cols-1 items-start gap-4 md:grid-cols-[230px_minmax(0,1fr)]">
+          <aside className="flex min-w-0 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 md:sticky md:top-3 md:max-h-[calc(100vh-24px)] md:overflow-y-auto">
+            <div className="flex items-center justify-between rounded-xl bg-zinc-950/70 px-3 py-3">
+              <div><span className="text-xl font-semibold">{snapshot.videos.length}</span><span className="ml-2 text-xs text-zinc-500">个视频</span></div>
+              <span className="rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-500">{isPreviewMode ? '预览' : '本地资源库'}</span>
             </div>
-
-            <div className="px-1 pb-4 pt-6">
-              <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Folders</div>
-              <div className="mt-2 text-2xl font-semibold text-white">虚拟文件夹</div>
+            <div className="px-1 pb-3 pt-5">
+              <div className="text-sm font-medium text-zinc-400">分类 <span className="ml-1 text-xs text-zinc-600">{snapshot.folders.length}</span></div>
             </div>
 
             <div className="space-y-1.5">
@@ -1361,7 +1384,7 @@ function App() {
                 )
               })}
             </div>
-            
+
             {/* 智能标签区域 */}
             {allTags.length > 0 && (
               <div className="mt-6 flex flex-col gap-3">
@@ -1428,12 +1451,12 @@ function App() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => void handleCleanupUnsupported()}
-                  disabled={isCleaningUp || isPreviewMode}
+                  onClick={() => setToolsTab('cleanup')}
+                  disabled={isPreviewMode}
                   className="mt-3 w-full text-xs"
                 >
-                  {isCleaningUp ? <LoaderCircle className="mr-2 size-3 animate-spin" /> : null}
-                  清理旧格式记录
+
+                  检查失效路径
                 </Button>
               </div>
 
@@ -1463,16 +1486,16 @@ function App() {
             </div>
           </aside>
 
-          <main className="rounded-[36px] border border-white/6 bg-white/[0.03] p-5 backdrop-blur-2xl">
+          <main className="min-w-0 rounded-2xl border border-zinc-800 bg-white/[0.02] p-4">
             <div className="flex flex-col gap-5 border-b border-white/6 px-2 pb-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
                 <div>
                   <div className="text-sm text-zinc-500">当前视图</div>
                   <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">{activeFolder.name}</h1>
                 </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex flex-wrap items-center gap-2">
                   <div className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-400">
-                    {filteredVideos.length} 个视频 · {selectedVideoIds.size > 0 && `已选 ${selectedVideoIds.size}`}
+                    {filteredVideos.length} 个视频{selectedVideoIds.size > 0 ? ` · 已选 ${selectedVideoIds.size}` : ''}
                   </div>
                   {filteredVideos.length > 0 && (
                     <Button
@@ -1481,7 +1504,7 @@ function App() {
                       onClick={handleSelectAll}
                       className="h-10 rounded-lg px-4"
                     >
-                      {selectedVideoIds.size === filteredVideos.length ? '取消全选' : '全选'}
+                      {selectedVideoIds.size === filteredVideos.length ? '取消全选' : '全选结果'}
                     </Button>
                   )}
                   {selectedVideoIds.size > 0 && (
@@ -1495,9 +1518,16 @@ function App() {
                       {isDeleting ? (
                         <LoaderCircle className="mr-2 size-4 animate-spin" />
                       ) : null}
-                      删除选中 ({selectedVideoIds.size})
+                      移除记录 ({selectedVideoIds.size})
                     </Button>
                   )}
+                  <Button variant="secondary" disabled={isPreviewMode} onClick={() => setToolsTab('monitor')}>目录管理</Button>
+                  <Button variant="secondary" disabled={isPreviewMode || isScanning || !snapshot.lastScanDirectory} onClick={() => void handleRescan()}>增量扫描</Button>
+                  <Button variant="secondary" disabled={isPreviewMode} onClick={() => setToolsTab('rules')}>规则分类</Button>
+                  <Button variant="secondary" disabled={isPreviewMode} onClick={() => setToolsTab('conditional')}>条件清理</Button>
+                  <select aria-label="每页数量" value={pageSize} onChange={event => setPageSize(Number(event.target.value))} className="h-10 rounded-lg border border-zinc-700 bg-zinc-800 px-2 text-sm text-zinc-300">
+                    {[12, 24, 48].map(value => <option key={value} value={value}>{value} / 页</option>)}
+                  </select>
                   <Button
                     type="button"
                     onClick={() => setShowFilter(!showFilter)}
@@ -1550,7 +1580,7 @@ function App() {
                   >
                     <Settings className="size-5" />
                   </Button>
-                  <PlayerSelector current={defaultPlayer} onSelect={(p) => setDefaultPlayer(p)} />
+                  <PlayerSelector current={defaultPlayer} onSelect={handlePlayerConfigChange} />
                   <Button
                     type="button"
                     onClick={() => { setShowMpvConfig(true); void loadMpvConfig() }}
@@ -1616,7 +1646,7 @@ function App() {
                     <div>
                       <label className="mb-2 block text-xs text-zinc-400">文件格式</label>
                       <div className="flex flex-wrap gap-2">
-                        {['.mp4', '.mkv', '.avi', '.mov', '.wmv'].map((format) => (
+                        {['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.m4v', '.flv', '.ts', '.mts', '.m2ts', '.mpeg', '.mpg'].map((format) => (
                           <button
                             key={format}
                             type="button"
@@ -1701,7 +1731,16 @@ function App() {
               </div>
             </div>
 
-            <div className="grid gap-4 pt-6 md:grid-cols-2 2xl:grid-cols-3">
+            {selectedVideoIds.size > 0 && <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/5 p-3">
+              <span className="mr-2 text-sm text-violet-300">已选 {selectedVideoIds.size} 项</span>
+              <select aria-label="批量分类目标" className="h-9 max-w-56 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-sm" value={batchFolderId} onChange={event => setBatchFolderId(event.target.value)}>
+                <option value="">选择分类</option>{snapshot.folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+              </select>
+              <Button size="sm" disabled={!batchFolderId || isMutatingFolder || isPreviewMode} onClick={() => void handleBatchClassify('add')}>加入分类</Button>
+              <Button variant="secondary" size="sm" disabled={!batchFolderId || isMutatingFolder || isPreviewMode} onClick={() => void handleBatchClassify('remove')}>移出分类</Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedVideoIds(new Set())}>取消选择</Button>
+            </div>}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4 pt-5">
               {paginatedVideos.map((video, index) => (
                 <VideoCard
                   key={video.id}
@@ -1807,7 +1846,7 @@ function App() {
                 </div>
                 <div className="mt-2 max-w-md text-sm leading-6 text-zinc-500">
                   {snapshot.videos.length === 0
-                    ? '先扫描一个本地目录，系统会把视频绝对路径写入 SQLite，再通过虚拟文件夹完成归类。'
+                    ? '扫描视频目录开始使用，也可以在目录管理中设置自动检测。'
                     : '试试更换搜索关键词，或者切换到其他虚拟文件夹视图。'}
                 </div>
                 <Button
@@ -2036,7 +2075,7 @@ function App() {
                         await handleSaveMpvConfig({ mpvPath: path })
                       }
                     }}
-                    variant="outline"
+                    variant="secondary"
                     className="rounded-xl border-white/10 text-xs text-zinc-300 hover:bg-white/10"
                   >
                     检查
@@ -2447,6 +2486,7 @@ function App() {
           style={{ left: contextMenuFolder.x, top: contextMenuFolder.y }}
           onClick={(e) => e.stopPropagation()}
         >
+          <button className="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800" onClick={() => { setRenamingFolder({ id: Number(contextMenuFolder.id.replace('folder-', '')), name: contextMenuFolder.name }); setContextMenuFolder(null) }}>重命名分类</button>
           <button
             onClick={() => void handleDeleteFolder(contextMenuFolder.id)}
             className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10"
@@ -2631,6 +2671,13 @@ function App() {
         </div>
       )}
 
+      {toolsTab && <LibraryTools videos={snapshot.videos} initialTab={toolsTab} onClose={() => setToolsTab(null)} onSnapshot={setSnapshot} onStatus={setStatusText} />}
+      {renamingFolder && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75" role="dialog" aria-label="重命名分类">
+        <form className="w-80 space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5" onSubmit={event => { event.preventDefault(); void window.videosorter?.renameVirtualFolder(renamingFolder.id, renamingFolder.name).then(next => { setSnapshot(next); setRenamingFolder(null); setStatusText('分类已重命名。') }).catch(error => setStatusText(String(error))) }}>
+          <h2>重命名分类</h2><Input autoFocus aria-label="新分类名称" maxLength={100} value={renamingFolder.name} onChange={event => setRenamingFolder({ ...renamingFolder, name: event.target.value })} />
+          <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setRenamingFolder(null)}>取消</Button><Button type="submit">保存</Button></div>
+        </form>
+      </div>}
       {/* 内置播放器 */}
       {playingVideo && defaultPlayer === 'web' && (
         <VideoPlayer
@@ -2638,21 +2685,21 @@ function App() {
           videoName={playingVideo.name}
           onClose={() => setPlayingVideo(null)}
           onNext={() => {
-            if (playingVideo.index < sortedVideos.length - 1) {
-              const next = sortedVideos[playingVideo.index + 1]
+            if (playingVideo.index < playbackQueue.length - 1) {
+              const next = playbackQueue[playingVideo.index + 1]
               setPlayingVideo({ path: next.absolutePath, name: next.title || next.name, index: playingVideo.index + 1 })
             }
           }}
           onPrevious={() => {
             if (playingVideo.index > 0) {
-              const prev = sortedVideos[playingVideo.index - 1]
+              const prev = playbackQueue[playingVideo.index - 1]
               setPlayingVideo({ path: prev.absolutePath, name: prev.title || prev.name, index: playingVideo.index - 1 })
             }
           }}
-          playlist={sortedVideos.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
+          playlist={playbackQueue.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
           currentIndex={playingVideo.index}
           onSelectVideo={(index) => {
-            const video = sortedVideos[index]
+            const video = playbackQueue[index]
             setPlayingVideo({ path: video.absolutePath, name: video.title || video.name, index })
           }}
         />
@@ -2665,21 +2712,21 @@ function App() {
           videoName={playingVideo.name}
           onClose={() => setPlayingVideo(null)}
           onNext={() => {
-            if (playingVideo.index < sortedVideos.length - 1) {
-              const next = sortedVideos[playingVideo.index + 1]
+            if (playingVideo.index < playbackQueue.length - 1) {
+              const next = playbackQueue[playingVideo.index + 1]
               setPlayingVideo({ path: next.absolutePath, name: next.title || next.name, index: playingVideo.index + 1 })
             }
           }}
           onPrevious={() => {
             if (playingVideo.index > 0) {
-              const prev = sortedVideos[playingVideo.index - 1]
+              const prev = playbackQueue[playingVideo.index - 1]
               setPlayingVideo({ path: prev.absolutePath, name: prev.title || prev.name, index: playingVideo.index - 1 })
             }
           }}
-          playlist={sortedVideos.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
+          playlist={playbackQueue.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
           currentIndex={playingVideo.index}
           onSelectVideo={(index) => {
-            const video = sortedVideos[index]
+            const video = playbackQueue[index]
             setPlayingVideo({ path: video.absolutePath, name: video.title || video.name, index })
           }}
         />

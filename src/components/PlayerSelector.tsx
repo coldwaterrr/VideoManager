@@ -43,7 +43,6 @@ export function PlayerSelector({ current = 'web', onSelect }: PlayerSelectorProp
     await window.videosorter?.playerSaveConfig({ defaultPlayer: type })
   }
 
-  const currentOpt = PLAYER_OPTIONS.find((o) => o.value === current)!
 
   return (
     <div className="relative">

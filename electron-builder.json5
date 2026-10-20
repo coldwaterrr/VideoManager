@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "dist-electron"
+    "dist-electron/main.js",
+    "dist-electron/preload.cjs"
   ],
   "extraFiles": [
     {

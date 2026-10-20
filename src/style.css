@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: dark;
   --color-primary: #8b5cf6;
   --color-primary-hover: #a78bfa;
   --color-primary-muted: rgba(139, 92, 246, 0.15);
@@ -63,3 +64,6 @@ input {
 ::selection {
   background: rgba(139, 92, 246, 0.3);
 }
+
+* { scrollbar-width: thin; scrollbar-color: #3f3f46 #141414; }
+button, input, select, summary { outline-offset: 3px; }

@@ -9,7 +9,7 @@ export function TitleBar() {
 
   useEffect(() => {
     if (window.winControls) {
-      const checkMaximized = () => setIsMaximized(window.winControls!.isMaximized())
+      const checkMaximized = async () => setIsMaximized(await window.winControls!.isMaximized())
       checkMaximized()
       const interval = setInterval(checkMaximized, 500)
       return () => clearInterval(interval)

@@ -39,6 +39,17 @@ if (isDev) {
   }
 }
 
+// An explicit profile lets a portable upgrade use a copy of an existing library.
+const dataDirectory = process.env.VIDEOMANAGER_DATA_DIR
+if (dataDirectory) {
+  if (!path.isAbsolute(dataDirectory)) throw new Error('VIDEOMANAGER_DATA_DIR 必须为绝对路径')
+  fs.mkdirSync(dataDirectory, { recursive: true })
+  app.setPath('userData', dataDirectory)
+}
+
+const ownsProfile = app.requestSingleInstanceLock()
+if (!ownsProfile) app.quit()
+
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 // 渲染层文件路径：生产环境中在 app.asar 内部，需要通过 app.getAppPath() 获取
@@ -70,6 +81,8 @@ import {
   type ScanProgressCallback,
   getCurrentDatabasePath,
   loadDatabaseAtPath,
+  inspectMissingVideos, cleanupMissingRecords, removeVideoRecords, renameVirtualFolder, batchClassify,
+  getClassificationConfig, saveClassificationConfig, previewClassificationRules, applyClassification,
 } from './database'
 import {
   getTMDBConfig,
@@ -86,7 +99,15 @@ import { setupMpvIPC, setMpvWindowRef, loadMpvConfig, findMpvExe } from './mpv'
 import { loadPlayerConfig, savePlayerConfig, type PlayerType } from './player-config'
 import { ensureMpvInstalled, isMpvDownloading, type MpvDownloadProgress } from './mpv-downloader'
 
+import { startMonitor, getMonitors, saveMonitors, checkMonitors, type MonitorDirectory } from './monitor'
+import { previewConditionalCleanup, applyConditionalCleanup, getAutomaticCleanup, saveAutomaticCleanup, checkAutomaticCleanup } from './cleanup'
+
 let win: BrowserWindow | null
+app.on('second-instance', () => {
+  if (win?.isMinimized()) win.restore()
+  win?.show()
+  win?.focus()
+})
 // AI 分类 AbortController 管理（按窗口 ID）
 const aiAbortControllers = new Map<number, AbortController>()
 
@@ -96,11 +117,11 @@ function createWindow() {
     console.log('VITE_PUBLIC:', process.env.VITE_PUBLIC)
 
     win = new BrowserWindow({
-      title: 'VideoSorter',
+      title: 'VideoManager',
       width: 1540,
       height: 920,
-      minWidth: 1280,
-      minHeight: 760,
+      minWidth: 960,
+      minHeight: 640,
       frame: false,
       icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
       backgroundColor: '#09090b',
@@ -136,7 +157,7 @@ function createWindow() {
 
 ipcMain.handle('database:get-meta', async () => {
   const currentPath = getCurrentDatabasePath()
-  const meta = getDatabaseMeta()
+  const meta = await getDatabaseMeta()
   if (currentPath) {
     return { ...meta, databasePath: currentPath }
   }
@@ -189,34 +210,41 @@ ipcMain.handle('library:scan-directory', async (_event, filterOptions?: ScanFilt
   }
 })
 
-// 清理不支持的视频格式记录
-ipcMain.handle('library:cleanup-unsupported', async () => {
-  await ensureDatabase()
-  const { database: db, databaseMeta: meta } = getDatabaseHandle()
-  const unsupportedExtensions = ['.webm', '.m4v', '.flv', '.ts', '.mts', '.m2ts', '.mpeg', '.mpg']
-
-  const beforeCount = db.exec('SELECT COUNT(*) FROM videos')[0]?.values?.[0]?.[0] ?? 0
-
-  db.run('BEGIN TRANSACTION')
-  try {
-    for (const ext of unsupportedExtensions) {
-      db.run('DELETE FROM videos WHERE absolute_path LIKE ?', [`%${ext}`])
-    }
-    db.run('COMMIT')
-  } catch (error) {
-    db.run('ROLLBACK')
-    throw error
-  }
-
-  await persistDatabase(db, meta.databasePath)
-  return { deletedCount: Number(beforeCount) - Number(db.exec('SELECT COUNT(*) FROM videos')[0]?.values?.[0]?.[0] ?? 0), snapshot: await getLibrarySnapshot() }
+// Missing paths are checked again when the user applies the preview.
+ipcMain.handle('library:inspect-missing', () => inspectMissingVideos())
+ipcMain.handle('library:cleanup-missing', (_event, ids: number[], databasePath: string) => cleanupMissingRecords(ids, databasePath))
+ipcMain.handle('cleanup:preview', (_event, conditions) => previewConditionalCleanup(conditions))
+ipcMain.handle('cleanup:apply', (_event, previewId: string, ids: number[]) => applyConditionalCleanup(previewId, ids))
+ipcMain.handle('cleanup:auto-get', () => getAutomaticCleanup())
+ipcMain.handle('cleanup:auto-save', (_event, config) => saveAutomaticCleanup(config))
+ipcMain.handle('cleanup:auto-check', async () => {
+  const result = await checkAutomaticCleanup(true)
+  if (result.status) win?.webContents.send('library:monitor-update', { autoCleanupStatus: result.status, snapshot: result.snapshot, message: result.deletedCount ? `自动清理：已移除 ${result.deletedCount} 条失效记录` : undefined })
+  return result
 })
+ipcMain.handle('library:rescan', async (_event, options?: ScanFilterOptions) => {
+  const snapshot = await getLibrarySnapshot()
+  if (!snapshot.lastScanDirectory) throw new Error('请先扫描一个目录')
+  return scanVideosFromDirectory(snapshot.lastScanDirectory, progress => win?.webContents.send('scan:progress', progress), options)
+})
+ipcMain.handle('monitor:get', () => getMonitors())
+ipcMain.handle('monitor:save', (_event, items: MonitorDirectory[]) => saveMonitors(items))
+ipcMain.handle('monitor:check', () => checkMonitors(true))
+ipcMain.handle('library:pick-directory', async () => {
+  const result = await dialog.showOpenDialog({ title: '选择自动检测目录', properties: ['openDirectory'] })
+  return result.canceled ? null : result.filePaths[0]
+})
+ipcMain.handle('library:rename-folder', (_event, id: number, name: string) => renameVirtualFolder(id, name))
+ipcMain.handle('library:batch-classify', (_event, ids: number[], folderId: number, mode: 'add' | 'remove') => batchClassify(ids, folderId, mode))
+ipcMain.handle('classification:get', () => getClassificationConfig())
+ipcMain.handle('classification:save', (_event, config) => saveClassificationConfig(config))
+ipcMain.handle('classification:preview', () => previewClassificationRules())
 
 // 用默认播放器打开视频
 ipcMain.handle('video:open', async (_event, filePath: string) => {
   const { shell } = require('electron')
-  await shell.openPath(filePath)
-  return { success: true }
+  const error = await shell.openPath(filePath)
+  return { success: !error, error: error || undefined }
 })
 
 // 获取视频缩略图
@@ -230,23 +258,7 @@ ipcMain.handle('video:get-thumbnail', async (_event, filePath: string) => {
 })
 
 // 批量删除视频
-ipcMain.handle('videos:delete', async (_event, videoIds: number[]) => {
-  await ensureDatabase()
-  const { database: db, databaseMeta: meta } = getDatabaseHandle()
-  const ids = Array.isArray(videoIds) ? videoIds : [videoIds]
-  const placeholders = ids.map(() => '?').join(',')
-  db.run('BEGIN TRANSACTION')
-  try {
-    db.run(`DELETE FROM virtual_folder_videos WHERE video_id IN (${placeholders})`, ids)
-    db.run(`DELETE FROM videos WHERE id IN (${placeholders})`, ids)
-    db.run('COMMIT')
-  } catch (error) {
-    db.run('ROLLBACK')
-    throw error
-  }
-  await persistDatabase(db, meta.databasePath)
-  return { deletedCount: ids.length, snapshot: await getLibrarySnapshot() }
-})
+ipcMain.handle('videos:delete', (_event, videoIds: number[]) => removeVideoRecords(videoIds))
 
 // ========== App Config IPC 处理器 ==========
 ipcMain.handle('app:get-version', () => {
@@ -277,6 +289,7 @@ ipcMain.handle('tmdb:scrape-all', async () => {
   await ensureDatabase()
   const { database: db } = getDatabaseHandle()
   const config = await getTMDBConfig()
+  if (db !== getDatabaseHandle().database) throw new Error('数据库已切换，请重新刮削')
   if (!config.apiKey) {
     return { success: false, message: '请先配置 TMDB API Key', total: 0, scraped: 0 }
   }
@@ -297,6 +310,7 @@ ipcMain.handle('tmdb:scrape-all', async () => {
   let scraped = 0
 
   for (const [id, fileName] of videoIds) {
+    if (db !== getDatabaseHandle().database) return { success: false, message: '数据库已切换，已停止刮削', total, scraped }
     const result = await scrapeVideoMetadata(id, fileName)
     scraped++
     if (win) {
@@ -432,41 +446,7 @@ ipcMain.handle('ai:cancel-classify', async () => {
   return { success: false, message: '没有正在进行的分类任务' }
 })
 
-ipcMain.handle('ai:apply', async (_event, folders: { name: string; videoIds: number[]; existing?: boolean }[]) => {
-  await ensureDatabase()
-  const { database: db, databaseMeta: meta } = getDatabaseHandle()
-  let created = 0
-
-  for (const folder of folders) {
-    const existing = db.exec(`SELECT id FROM virtual_folders WHERE name = ?`, [folder.name])
-    let folderId: number
-
-    if (existing.length && existing[0].values.length > 0) {
-      folderId = existing[0].values[0][0] as number
-    } else {
-      const timestamp = new Date().toISOString()
-      db.run(
-        `INSERT INTO virtual_folders (name, created_at, updated_at) VALUES (?, ?, ?)`,
-        [folder.name, timestamp, timestamp],
-      )
-      const newResult = db.exec(`SELECT id FROM virtual_folders WHERE name = ?`, [folder.name])
-      folderId = newResult?.[0]?.values?.[0]?.[0] as number
-      if (folderId > 0) created++
-    }
-
-    // 直接 INSERT 关联，不用 toggle（避免重复调用导致取消关联）
-    for (const videoId of folder.videoIds) {
-      db.run(
-        `INSERT OR IGNORE INTO virtual_folder_videos (virtual_folder_id, video_id, created_at) VALUES (?, ?, ?)`,
-        [folderId, videoId, new Date().toISOString()],
-      )
-    }
-  }
-
-  await persistDatabase(db, meta.databasePath)
-
-  return { success: true, message: `创建 ${created} 个文件夹`, snapshot: await getLibrarySnapshot() }
-})
+ipcMain.handle('ai:apply', (_event, folders: { name: string; videoIds: number[] }[]) => applyClassification(folders))
 
 // ========== 数据库选择 IPC 处理器 ==========
 async function scanDirForDB(dir: string, depth = 0, maxDepth = 3): Promise<Array<{ path: string; size: number }>> {
@@ -519,7 +499,10 @@ ipcMain.handle('db:scan-for-databases', async () => {
 })
 
 ipcMain.handle('db:select-database', async (_event, databasePath: string) => {
-  return loadDatabaseAtPath(databasePath)
+  const snapshot = await loadDatabaseAtPath(databasePath)
+  for (const controller of aiAbortControllers.values()) controller.abort()
+  aiAbortControllers.clear()
+  return snapshot
 })
 
 ipcMain.handle('db:get-current-path', async () => {
@@ -679,7 +662,7 @@ function createTray() {
     }
 
     tray = new Tray(icon)
-    tray.setToolTip('VideoSorter - 本地视频管理')
+    tray.setToolTip('VideoManager - 本地视频管理')
 
     tray.on('click', () => {
       win?.show()
@@ -730,7 +713,7 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(async () => {
+if (ownsProfile) app.whenReady().then(async () => {
   try {
     await ensureDatabase()
     createWindow()
@@ -739,6 +722,7 @@ app.whenReady().then(async () => {
     setupWindowBehaviors()
     createTray()
     setupAutoUpdater()
+    startMonitor(() => win)
 
     // 后台检查 mpv 是否安装，未安装则自动下载
     const mpvConfig = loadMpvConfig()

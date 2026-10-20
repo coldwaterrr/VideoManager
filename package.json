@@ -1,7 +1,7 @@
 {
   "name": "video-sorter",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,9 @@
     "prebuild": "node scripts/download-mpv.cjs",
     "preview": "vite preview",
     "download:mpv": "node scripts/download-mpv.cjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "node scripts/run-electron-test.cjs && node scripts/run-electron-test.cjs scripts/test-cleanup.cjs",
+    "build:app": "vite build"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
