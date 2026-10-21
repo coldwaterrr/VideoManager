@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.2] - 2026-10-21
 
+- 完整生成 Windows 安装版、便携版和 ZIP；补齐固定版本 FFmpeg 的下载校验、GitHub 更新源和正确的版本目录上传路径。
+- 标签构建校验依赖、ZIP 完整性及更新 SHA-512，生成 SHA-256 清单后上传 Release 草稿供发行核验。
 - 移除预览的固定 10fps 限制，保留原片帧率（最高 30fps），提高动作流畅度，同时保留随机 3–5 秒切段与下一段预载。
 - 预览缓存版本升级为 r2，自动重建低帧率旧预览，继续复用封面。
 - 验证 12、24、29.97fps 保持原速率，60fps 限至 30fps，以及旧缓存失效和真实播放换段。

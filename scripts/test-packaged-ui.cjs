@@ -35,7 +35,10 @@ const hash = (value) => createHash('sha256').update(value).digest('hex')
     env.VIDEOMANAGER_FFMPEG_PATH = ''
   }
   delete env.ELECTRON_RUN_AS_NODE
-  const executable = path.resolve(`release/${version}/win-unpacked/VideoManager.exe`)
+  const executableArg = process.argv.indexOf('--executable')
+  const executable = path.resolve(
+    executableArg >= 0 ? process.argv[executableArg + 1] : `release/${version}/win-unpacked/VideoManager.exe`
+  )
   const child = spawn(executable, [`--remote-debugging-port=${port}`], {
     env,
     windowsHide: true,
@@ -44,7 +47,7 @@ const hash = (value) => createHash('sha256').update(value).digest('hex')
   let socket
   try {
     let target
-    for (let attempt = 0; attempt < 100; attempt++) {
+    for (let attempt = 0; attempt < 200; attempt++) {
       try {
         target = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find(
           (item) => item.type === 'page' && !item.url.startsWith('devtools:')
@@ -118,7 +121,10 @@ const hash = (value) => createHash('sha256').update(value).digest('hex')
       const root = path.dirname(require('node:url').fileURLToPath(location.href))
       return ['videomanager.ico', 'videomanager.png', 'videomanager-tray.png'].map(name => ({ name, valid: !require('electron').nativeImage.createFromPath(path.join(root, name)).isEmpty() }))
     })()`)
-    assert.ok(icons.every(icon => icon.valid), `Missing packaged icon: ${JSON.stringify(icons)}`)
+    assert.ok(
+      icons.every((icon) => icon.valid),
+      `Missing packaged icon: ${JSON.stringify(icons)}`
+    )
     console.log('PASS: packaged application and tray icons are present and decode correctly')
     if (testMedia) {
       const media = await evaluate(`(async () => {
@@ -131,7 +137,9 @@ const hash = (value) => createHash('sha256').update(value).digest('hex')
       })()`)
       assert.ok(media.cover && media.preview && media.warm && media.same)
       assert.ok(media.duration > 0)
-      console.log(`PASS: bundled FFmpeg generates local covers and previews with PATH empty; ${media.series} saved series loaded`)
+      console.log(
+        `PASS: bundled FFmpeg generates local covers and previews with PATH empty; ${media.series} saved series loaded`
+      )
       const rotation = await evaluate(`new Promise((resolve, reject) => {
         const card = document.querySelector('article')
         const events = []
@@ -146,7 +154,7 @@ const hash = (value) => createHash('sha256').update(value).digest('hex')
         card.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }))
       })`)
       assert.notEqual(rotation[0].slot, rotation[1].slot)
-      assert.ok(rotation.every(event => event.duration >= 3 && event.duration <= 5.1))
+      assert.ok(rotation.every((event) => event.duration >= 3 && event.duration <= 5.1))
       console.log('PASS: actual packaged renderer plays and switches random 3–5 second clips')
     }
     if (source) assert.equal(hash(await fs.readFile(source)), sourceHash, 'Source library was modified')

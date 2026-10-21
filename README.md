@@ -59,7 +59,11 @@ npm run dev
 npm run build
 ```
 
-构建需要本机已有 FFmpeg。`prepare:media`（构建时自动运行）从 PATH 或 `VIDEOMANAGER_FFMPEG_PATH` 复制可执行文件到 `media-tools/`；打包后用户无需另装 FFmpeg。媒体缓存保存在所用配置目录的 `media-cache/v2/` 下。
+`prepare:media`（构建时自动运行）优先复用本机 FFmpeg；Windows x64 缺失时下载固定的 9.0.2 essentials 构建，并校验 SHA-256。也可设置 `VIDEOMANAGER_FFMPEG_PATH`。打包后用户无需另装 FFmpeg。媒体缓存保存在所用配置目录的 `media-cache/v2/` 下。
+
+Windows 构建输出到 `release/<版本>/`，包含 Setup 安装版、Portable 便携版、ZIP、更新描述与 blockmap。执行 `npm run verify:release` 校验包内依赖、ZIP 完整性、更新文件哈希和用户数据排除，并生成 `SHA256SUMS.txt`。
+
+推送与 package.json 一致的 `v<版本>` 标签后，GitHub Actions 准备依赖、检查源码、构建并校验发行包，上传为 Release 草稿。核验下载和运行后再将草稿发布为正式版本；普通分支 push 不发版。
 
 ### 系列分组
 
@@ -222,6 +226,7 @@ videomanager/
 | `npm run test:ui` | 构建并运行播放和媒体库交互检查（需要本地测试视频） |
 | `npm run test:media` | 检查磁盘缓存、短片编码、重启复用和系列读写保护 |
 | `npm run prepare:media` | 准备打包用的本机 FFmpeg |
+| `npm run verify:release` | 验证 Windows 发行包与更新描述，生成 SHA-256 校验清单 |
 | `start.bat` | Windows 快捷启动脚本 |
 
 ## ⚠️ 注意事项

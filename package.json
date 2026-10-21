@@ -17,7 +17,8 @@
     "test:ui": "npm run build:app && node scripts/run-electron-test.cjs scripts/test-app.cjs && node scripts/run-electron-test.cjs scripts/test-library-ui.cjs && node scripts/run-electron-test.cjs scripts/test-media-series-ui.cjs",
     "icons": "node scripts/run-electron-test.cjs scripts/generate-icons.cjs",
     "test:window": "npm run build:app && node scripts/run-electron-test.cjs scripts/test-window-tray.cjs",
-    "test:media": "node scripts/run-electron-test.cjs scripts/test-media-series.cjs"
+    "test:media": "node scripts/run-electron-test.cjs scripts/test-media-series.cjs",
+    "verify:release": "node scripts/verify-release.cjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

@@ -52,6 +52,7 @@ videosorter-backup.sqlite
 # Local verification artifacts
 /media-tools/*.exe
 /media-tools/ffmpeg
+/media-tools/*.download
 output/
 .playwright-cli/
 

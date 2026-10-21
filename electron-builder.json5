@@ -4,6 +4,12 @@
   "appId": "com.videomanager.app",
   "asar": true,
   "productName": "VideoManager",
+  "publish": {
+    "provider": "github",
+    "owner": "coldwaterrr",
+    "repo": "VideoManager",
+    "releaseType": "draft"
+  },
   "directories": {
     "output": "release/${version}"
   },
