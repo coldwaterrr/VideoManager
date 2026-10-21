@@ -1,15 +1,24 @@
 {
   "name": "video-sorter",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.6.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build && electron-builder --publish never",
-    "prebuild": "node scripts/download-mpv.cjs",
+    "prebuild": "node scripts/download-mpv.cjs && node scripts/prepare-media-tools.cjs",
     "preview": "vite preview",
     "download:mpv": "node scripts/download-mpv.cjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "node scripts/run-electron-test.cjs && node scripts/run-electron-test.cjs scripts/test-cleanup.cjs",
+    "prepare:media": "node scripts/prepare-media-tools.cjs",
+    "prebuild:app": "node scripts/prepare-media-tools.cjs",
+    "build:app": "vite build",
+    "test:ui": "npm run build:app && node scripts/run-electron-test.cjs scripts/test-app.cjs && node scripts/run-electron-test.cjs scripts/test-library-ui.cjs && node scripts/run-electron-test.cjs scripts/test-media-series-ui.cjs",
+    "icons": "node scripts/run-electron-test.cjs scripts/generate-icons.cjs",
+    "test:window": "npm run build:app && node scripts/run-electron-test.cjs scripts/test-window-tray.cjs",
+    "test:media": "node scripts/run-electron-test.cjs scripts/test-media-series.cjs",
+    "verify:release": "node scripts/verify-release.cjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

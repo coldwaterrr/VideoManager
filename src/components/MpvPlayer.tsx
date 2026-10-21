@@ -50,13 +50,13 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
   const [errorMsg, setErrorMsg] = useState('')
   const [showPlaylist, setShowPlaylist] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [mpvAvailable, setMpvAvailable] = useState<boolean | null>(null)
   const [mpvConfig, setMpvConfig] = useState<MpvConfigType>(DEFAULT_CONFIG)
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
 
   // 加载配置并启动 mpv（合并为单一 effect，避免竞态）
   useEffect(() => {
-    if (!window.videosorter || status !== 'launching') return
+    if (!window.videosorter) return
+    setStatus('launching')
     let cancelled = false
 
     // 监听下载进度
@@ -67,11 +67,10 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
     async function launch() {
       try {
         // 1. 检查 mpv 可用性
-        const { available, path: exePath, mpvPath: configMpvPath } = await window.videosorter!.mpvCheckAvailable()
+        const { path: exePath, mpvPath: configMpvPath } = await window.videosorter!.mpvCheckAvailable()
         if (cancelled) return
-        setMpvAvailable(available)
         // exePath 是完整路径，configMpvPath 是目录路径，用于 mpvLaunch 传递
-        const mpvDir = configMpvPath || exePath ? exePath.replace(/[/\\][^/\\]+$/, '') : ''
+        const mpvDir = configMpvPath || (exePath ? exePath.replace(/[/\\][^/\\]+$/, '') : '')
 
         // 2. 获取已保存的配置
         const savedConfig = await window.videosorter!.mpvGetConfig()
@@ -106,7 +105,7 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
       cancelled = true
       unsubProgress()
     }
-  }, [filePath, status])
+  }, [filePath])
 
   useEffect(() => {
     if (!window.videosorter) return
@@ -116,13 +115,17 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.matches('input, textarea, select, [contenteditable=true]')) return
       if (e.key === 'Escape') {
         if (showSettings) { setShowSettings(false); return }
         if (showPlaylist) { setShowPlaylist(false); return }
+        window.videosorter?.mpvTerminate()
         onClose()
       }
-      else if (e.key === 'ArrowLeft') onPrevious?.()
-      else if (e.key === 'ArrowRight') onNext?.()
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault()
+        window.videosorter?.mpvCommand(['seek', e.key === 'ArrowRight' ? 5 : -5, 'relative+exact'])
+      }
       else if (e.key === ' ' && status === 'playing') {
         e.preventDefault()
         window.videosorter?.mpvCommand(['cycle', 'pause'])
@@ -132,9 +135,10 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onClose, onNext, onPrevious, showSettings, showPlaylist, status])
 
+  useEffect(() => () => { void window.videosorter?.mpvTerminate() }, [])
+
   const handleSelectVideo = useCallback((index: number) => {
     onSelectVideo?.(index)
-    setStatus('launching')
   }, [onSelectVideo])
 
   const handleClose = useCallback(() => {
@@ -192,7 +196,7 @@ export function MpvPlayer({ filePath, videoName, onClose, onNext, onPrevious, pl
           )}
 
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-zinc-800/80 px-3 py-1 text-[10px] text-zinc-400">
-            Esc 关闭 | ← → 切换视频 | 空格 暂停
+            Esc 关闭 | ← → 快退/快进 5 秒 | 鼠标右键快进 | 空格 暂停
           </div>
         </>
       )}

@@ -17,6 +17,8 @@ export interface MpvConfig {
 let win: BrowserWindow | null = null
 let mpvChild: ChildProcess | null = null
 let mpvSocketPath: string | null = null
+let launchGeneration = 0
+let requestId = 0
 
 export function setMpvWindowRef(browserWin: BrowserWindow | null) {
   win = browserWin
@@ -127,6 +129,7 @@ function buildShaderArgs(config: MpvConfig): string[] {
 }
 
 export function terminateMpv() {
+  launchGeneration++
   if (mpvChild) {
     try {
       mpvChild.kill('SIGTERM')
@@ -135,7 +138,7 @@ export function terminateMpv() {
     }
     mpvChild = null
   }
-  if (mpvSocketPath && process.platform === 'win32') {
+  if (mpvSocketPath && process.platform !== 'win32') {
     try {
       fs.unlinkSync(mpvSocketPath)
     } catch {
@@ -153,36 +156,44 @@ function generateSocketPath(): string {
   return path.join(os.tmpdir(), `mpv-${random}.sock`)
 }
 
-async function sendMpvCommand(cmd: unknown[]): Promise<unknown> {
-  if (!mpvSocketPath) return null
-
-  const command = { version: 1, command: cmd }
-
-  return new Promise((resolve) => {
+export async function sendMpvCommand(cmd: unknown[]): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  if (!mpvSocketPath) return { success: false, error: 'mpv 未启动' }
+  const socketPath = mpvSocketPath
+  const id = ++requestId
+  return new Promise(resolve => {
     const client = new net.Socket()
-    let settled = false
-    const timeout = setTimeout(() => {
-      if (!settled) { settled = true; client.destroy(); resolve(null) }
-    }, 2000)
-
-    client.on('connect', () => {
-      client.write(JSON.stringify(command) + '\n')
-      setTimeout(() => {
-        if (!settled) { settled = true; clearTimeout(timeout); client.destroy(); resolve(null) }
-      }, 300)
+    let settled = false, buffer = ''
+    const finish = (result: { success: boolean; data?: unknown; error?: string }) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      client.destroy()
+      resolve(result)
+    }
+    const timeout = setTimeout(() => finish({ success: false, error: 'mpv 响应超时' }), 2000)
+    client.on('connect', () => client.write(JSON.stringify({ command: cmd, request_id: id }) + '\n'))
+    client.on('data', chunk => {
+      buffer += chunk.toString()
+      let end: number
+      while ((end = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, end)
+        buffer = buffer.slice(end + 1)
+        try {
+          const response = JSON.parse(line)
+          if (response.request_id === id) finish({ success: response.error === 'success', data: response.data, error: response.error === 'success' ? undefined : response.error })
+        } catch { /* Ignore incomplete or unsolicited event messages. */ }
+      }
     })
-
-    client.on('error', () => {
-      if (!settled) { settled = true; clearTimeout(timeout); resolve(null) }
-    })
-
-    client.connect({ path: mpvSocketPath as string })
+    client.on('error', error => finish({ success: false, error: error.message }))
+    client.on('close', () => finish({ success: false, error: 'mpv 连接已关闭' }))
+    client.connect({ path: socketPath })
   })
 }
 
-export function setupMpvIPC() {
+export function setupMpvIPC(spawnProcess: typeof spawn = spawn) {
   ipcMain.handle('mpv:launch', async (_event, filePath: string, config?: Partial<MpvConfig>) => {
     terminateMpv()
+    const generation = launchGeneration
 
     const savedConfig = loadMpvConfig()
     // 过滤：config 中的空 mpvPath 不应覆盖 savedConfig
@@ -204,6 +215,8 @@ export function setupMpvIPC() {
       }
     }
 
+    if (generation !== launchGeneration) return { success: false, error: '已取消启动' }
+
     if (!fs.existsSync(filePath)) {
       return { success: false, error: '视频文件不存在: ' + filePath }
     }
@@ -223,10 +236,14 @@ export function setupMpvIPC() {
     const mpvY = Math.floor(b.y + (b.height - mpvH) / 2)
     const geoArg = `--geometry=${mpvW}x${mpvH}+${mpvX}+${mpvY}`
 
+    const inputPath = path.join(app.getPath('userData'), 'videomanager-input.conf')
+    fs.writeFileSync(inputPath, 'RIGHT seek 5 relative+exact\nLEFT seek -5 relative+exact\nMBTN_RIGHT seek 5 relative+exact\nMBTN_RIGHT_DBL ignore\n')
     const args = [
       filePath,
       '--force-window=immediate',
       '--idle=yes',
+      '--keep-open=yes',
+      `--input-conf=${inputPath}`,
       `--input-ipc-server=${socketPath}`,
       '--osd-level=1',
       '--osc=yes',
@@ -241,28 +258,38 @@ export function setupMpvIPC() {
     args.push(...shaderArgs)
 
     try {
-      mpvChild = spawn(mpvExe, args, {
+      const child = spawnProcess(mpvExe, args, {
         detached: false,
         stdio: 'ignore',
         windowsHide: false,
       })
 
-      mpvChild.on('exit', (code) => {
+      mpvChild = child
+      child.on('exit', (code) => {
         if (code !== 0) {
           console.log(`[mpv] exited with code ${code}`)
         }
+        if (mpvChild !== child) return
         mpvChild = null
+        mpvSocketPath = null
         if (win) {
           win.webContents.send('mpv:ended')
         }
       })
 
-      mpvChild.on('error', (err) => {
+      child.on('error', (err) => {
         console.error('[mpv] error:', err)
-        terminateMpv()
+        if (mpvChild === child) terminateMpv()
       })
 
-      await new Promise(resolve => setTimeout(resolve, 500))
+      let ready = false
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (generation !== launchGeneration || mpvChild !== child) return { success: false, error: 'mpv 启动已取消或进程已退出' }
+        const response = await sendMpvCommand(['get_property', 'idle-active'])
+        if (response.success) { ready = true; break }
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      if (!ready) { terminateMpv(); return { success: false, error: 'mpv 启动超时' } }
 
       // Show OSD with active settings
       const shaderName = currentConfig.superResShader === 'none' ? '无' : currentConfig.superResShader.toUpperCase()
@@ -279,14 +306,13 @@ export function setupMpvIPC() {
 
   ipcMain.handle('mpv:loadfile', async (_event, filePath: string, mode = 'replace') => {
     if (!mpvSocketPath) return { success: false, error: 'mpv 未启动' }
-    const result = await sendMpvCommand(['loadfile', filePath, mode])
-    return { success: true, data: result }
+    if (!fs.existsSync(filePath)) return { success: false, error: '视频文件不存在' }
+    return sendMpvCommand(['loadfile', filePath, mode])
   })
 
   ipcMain.handle('mpv:command', async (_event, cmd: unknown[]) => {
     if (!mpvSocketPath) return { success: false, error: 'mpv 未启动' }
-    const result = await sendMpvCommand(cmd)
-    return { success: true, data: result }
+    return sendMpvCommand(cmd)
   })
 
   ipcMain.handle('mpv:get-config', async () => {

@@ -11,23 +11,51 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - run: npm ci
+
+      - name: Validate tag and version
+        id: package
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw "Tag and package version do not match" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Prepare pinned FFmpeg
+        run: node scripts/prepare-media-tools.cjs --download
+
+      - name: Validate source
+        run: |
+          npm run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+
       - run: npm run build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify distributables and updater metadata
+        run: npm run verify:release
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          body_path: docs/releases/v${{ steps.package.outputs.version }}.md
+          draft: true
+          fail_on_unmatched_files: true
           files: |
-            release/**/*.exe
-            release/**/*.blockmap
-            release/latest.yml
+            release/${{ steps.package.outputs.version }}/VideoManager-*.exe
+            release/${{ steps.package.outputs.version }}/VideoManager-*.zip
+            release/${{ steps.package.outputs.version }}/*.blockmap
+            release/${{ steps.package.outputs.version }}/latest.yml
+            release/${{ steps.package.outputs.version }}/SHA256SUMS.txt

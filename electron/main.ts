@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 import { autoUpdater } from 'electron-updater'
+import { fallbackIcon } from './icon-fallback'
+import { getMediaAssets, warmMediaViewport, mediaCacheStats, pruneMediaCache, stopMediaCache, PREVIEW_SLOTS } from './media-cache'
+import { getSeries, previewSeries, applySeries, saveSeries, deleteSeries } from './series'
 
 // userData 路径: 项目根目录下的 .videosorter
 const require = createRequire(import.meta.url)
@@ -39,6 +42,17 @@ if (isDev) {
   }
 }
 
+// An explicit profile lets a portable upgrade use a copy of an existing library.
+const dataDirectory = process.env.VIDEOMANAGER_DATA_DIR
+if (dataDirectory) {
+  if (!path.isAbsolute(dataDirectory)) throw new Error('VIDEOMANAGER_DATA_DIR 必须为绝对路径')
+  fs.mkdirSync(dataDirectory, { recursive: true })
+  app.setPath('userData', dataDirectory)
+}
+
+const ownsProfile = app.requestSingleInstanceLock()
+if (!ownsProfile) app.quit()
+
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 // 渲染层文件路径：生产环境中在 app.asar 内部，需要通过 app.getAppPath() 获取
@@ -64,12 +78,15 @@ import {
   getDatabaseHandle,
   getDatabaseMeta,
   getLibrarySnapshot,
+  getMediaVideos,
   persistDatabase,
   scanVideosFromDirectory,
   toggleVideoFolder,
   type ScanProgressCallback,
   getCurrentDatabasePath,
   loadDatabaseAtPath,
+  inspectMissingVideos, cleanupMissingRecords, removeVideoRecords, renameVirtualFolder, batchClassify,
+  getClassificationConfig, saveClassificationConfig, previewClassificationRules, applyClassification,
 } from './database'
 import {
   getTMDBConfig,
@@ -86,7 +103,18 @@ import { setupMpvIPC, setMpvWindowRef, loadMpvConfig, findMpvExe } from './mpv'
 import { loadPlayerConfig, savePlayerConfig, type PlayerType } from './player-config'
 import { ensureMpvInstalled, isMpvDownloading, type MpvDownloadProgress } from './mpv-downloader'
 
+import { startMonitor, getMonitors, saveMonitors, checkMonitors, type MonitorDirectory } from './monitor'
+import { previewConditionalCleanup, applyConditionalCleanup, getAutomaticCleanup, saveAutomaticCleanup, checkAutomaticCleanup } from './cleanup'
+
 let win: BrowserWindow | null
+function showMainWindow() {
+  if (!win || win.isDestroyed()) return
+  win.setSkipTaskbar(false)
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+app.on('second-instance', showMainWindow)
 // AI 分类 AbortController 管理（按窗口 ID）
 const aiAbortControllers = new Map<number, AbortController>()
 
@@ -96,14 +124,14 @@ function createWindow() {
     console.log('VITE_PUBLIC:', process.env.VITE_PUBLIC)
 
     win = new BrowserWindow({
-      title: 'VideoSorter',
+      title: 'VideoManager',
       width: 1540,
       height: 920,
-      minWidth: 1280,
-      minHeight: 760,
+      minWidth: 960,
+      minHeight: 640,
       frame: false,
-      icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
-      backgroundColor: '#09090b',
+      icon: getApplicationIcon(),
+      backgroundColor: '#14151a',
       resizable: true,
       webPreferences: {
         // 开发模式下禁用 webSecurity，允许从 http://localhost 加载 file:// 视频
@@ -136,7 +164,7 @@ function createWindow() {
 
 ipcMain.handle('database:get-meta', async () => {
   const currentPath = getCurrentDatabasePath()
-  const meta = getDatabaseMeta()
+  const meta = await getDatabaseMeta()
   if (currentPath) {
     return { ...meta, databasePath: currentPath }
   }
@@ -146,6 +174,25 @@ ipcMain.handle('database:get-meta', async () => {
 ipcMain.handle('library:get-snapshot', async () => {
   return getLibrarySnapshot()
 })
+
+ipcMain.handle('media:get', async (_event, id: number, preview = false, slot = 0) => {
+  if (!Number.isSafeInteger(id) || typeof preview !== 'boolean' || !Number.isInteger(slot) || slot < 0 || slot >= PREVIEW_SLOTS) throw new Error('视频参数无效。')
+  const [video] = await getMediaVideos([id])
+  if (!video) throw new Error('视频已不在当前库中。')
+  return getMediaAssets(video, preview, true, slot)
+})
+ipcMain.handle('media:warm', async (_event, ids: number[], preview: boolean) => {
+  if (!Array.isArray(ids) || ids.length > 48 || ids.some(id => !Number.isSafeInteger(id))) return
+  const selected = new Map((await getMediaVideos(ids)).map(video => [video.id, video]))
+  const videos = ids.map(id => selected.get(id)).filter((video): video is NonNullable<typeof video> => !!video)
+  warmMediaViewport(videos, preview === true)
+})
+ipcMain.handle('media:stats', mediaCacheStats)
+ipcMain.handle('series:get', getSeries)
+ipcMain.handle('series:preview', (_event, mode) => previewSeries(mode))
+ipcMain.handle('series:apply', (_event, preview) => applySeries(preview))
+ipcMain.handle('series:save', (_event, databasePath, name, ids, id) => saveSeries(databasePath, name, ids, id))
+ipcMain.handle('series:delete', (_event, databasePath, id) => deleteSeries(databasePath, id))
 
 ipcMain.handle('library:create-folder', async (_event, name: string) => {
   return createVirtualFolder(name)
@@ -189,34 +236,41 @@ ipcMain.handle('library:scan-directory', async (_event, filterOptions?: ScanFilt
   }
 })
 
-// 清理不支持的视频格式记录
-ipcMain.handle('library:cleanup-unsupported', async () => {
-  await ensureDatabase()
-  const { database: db, databaseMeta: meta } = getDatabaseHandle()
-  const unsupportedExtensions = ['.webm', '.m4v', '.flv', '.ts', '.mts', '.m2ts', '.mpeg', '.mpg']
-
-  const beforeCount = db.exec('SELECT COUNT(*) FROM videos')[0]?.values?.[0]?.[0] ?? 0
-
-  db.run('BEGIN TRANSACTION')
-  try {
-    for (const ext of unsupportedExtensions) {
-      db.run('DELETE FROM videos WHERE absolute_path LIKE ?', [`%${ext}`])
-    }
-    db.run('COMMIT')
-  } catch (error) {
-    db.run('ROLLBACK')
-    throw error
-  }
-
-  await persistDatabase(db, meta.databasePath)
-  return { deletedCount: Number(beforeCount) - Number(db.exec('SELECT COUNT(*) FROM videos')[0]?.values?.[0]?.[0] ?? 0), snapshot: await getLibrarySnapshot() }
+// Missing paths are checked again when the user applies the preview.
+ipcMain.handle('library:inspect-missing', () => inspectMissingVideos())
+ipcMain.handle('library:cleanup-missing', (_event, ids: number[], databasePath: string) => cleanupMissingRecords(ids, databasePath))
+ipcMain.handle('cleanup:preview', (_event, conditions) => previewConditionalCleanup(conditions))
+ipcMain.handle('cleanup:apply', (_event, previewId: string, ids: number[]) => applyConditionalCleanup(previewId, ids))
+ipcMain.handle('cleanup:auto-get', () => getAutomaticCleanup())
+ipcMain.handle('cleanup:auto-save', (_event, config) => saveAutomaticCleanup(config))
+ipcMain.handle('cleanup:auto-check', async () => {
+  const result = await checkAutomaticCleanup(true)
+  if (result.status) win?.webContents.send('library:monitor-update', { autoCleanupStatus: result.status, snapshot: result.snapshot, message: result.deletedCount ? `自动清理：已移除 ${result.deletedCount} 条失效记录` : undefined })
+  return result
 })
+ipcMain.handle('library:rescan', async (_event, options?: ScanFilterOptions) => {
+  const snapshot = await getLibrarySnapshot()
+  if (!snapshot.lastScanDirectory) throw new Error('请先扫描一个目录')
+  return scanVideosFromDirectory(snapshot.lastScanDirectory, progress => win?.webContents.send('scan:progress', progress), options)
+})
+ipcMain.handle('monitor:get', () => getMonitors())
+ipcMain.handle('monitor:save', (_event, items: MonitorDirectory[]) => saveMonitors(items))
+ipcMain.handle('monitor:check', () => checkMonitors(true))
+ipcMain.handle('library:pick-directory', async () => {
+  const result = await dialog.showOpenDialog({ title: '选择自动检测目录', properties: ['openDirectory'] })
+  return result.canceled ? null : result.filePaths[0]
+})
+ipcMain.handle('library:rename-folder', (_event, id: number, name: string) => renameVirtualFolder(id, name))
+ipcMain.handle('library:batch-classify', (_event, ids: number[], folderId: number, mode: 'add' | 'remove') => batchClassify(ids, folderId, mode))
+ipcMain.handle('classification:get', () => getClassificationConfig())
+ipcMain.handle('classification:save', (_event, config) => saveClassificationConfig(config))
+ipcMain.handle('classification:preview', () => previewClassificationRules())
 
 // 用默认播放器打开视频
 ipcMain.handle('video:open', async (_event, filePath: string) => {
   const { shell } = require('electron')
-  await shell.openPath(filePath)
-  return { success: true }
+  const error = await shell.openPath(filePath)
+  return { success: !error, error: error || undefined }
 })
 
 // 获取视频缩略图
@@ -230,23 +284,7 @@ ipcMain.handle('video:get-thumbnail', async (_event, filePath: string) => {
 })
 
 // 批量删除视频
-ipcMain.handle('videos:delete', async (_event, videoIds: number[]) => {
-  await ensureDatabase()
-  const { database: db, databaseMeta: meta } = getDatabaseHandle()
-  const ids = Array.isArray(videoIds) ? videoIds : [videoIds]
-  const placeholders = ids.map(() => '?').join(',')
-  db.run('BEGIN TRANSACTION')
-  try {
-    db.run(`DELETE FROM virtual_folder_videos WHERE video_id IN (${placeholders})`, ids)
-    db.run(`DELETE FROM videos WHERE id IN (${placeholders})`, ids)
-    db.run('COMMIT')
-  } catch (error) {
-    db.run('ROLLBACK')
-    throw error
-  }
-  await persistDatabase(db, meta.databasePath)
-  return { deletedCount: ids.length, snapshot: await getLibrarySnapshot() }
-})
+ipcMain.handle('videos:delete', (_event, videoIds: number[]) => removeVideoRecords(videoIds))
 
 // ========== App Config IPC 处理器 ==========
 ipcMain.handle('app:get-version', () => {
@@ -277,6 +315,7 @@ ipcMain.handle('tmdb:scrape-all', async () => {
   await ensureDatabase()
   const { database: db } = getDatabaseHandle()
   const config = await getTMDBConfig()
+  if (db !== getDatabaseHandle().database) throw new Error('数据库已切换，请重新刮削')
   if (!config.apiKey) {
     return { success: false, message: '请先配置 TMDB API Key', total: 0, scraped: 0 }
   }
@@ -297,6 +336,7 @@ ipcMain.handle('tmdb:scrape-all', async () => {
   let scraped = 0
 
   for (const [id, fileName] of videoIds) {
+    if (db !== getDatabaseHandle().database) return { success: false, message: '数据库已切换，已停止刮削', total, scraped }
     const result = await scrapeVideoMetadata(id, fileName)
     scraped++
     if (win) {
@@ -432,41 +472,7 @@ ipcMain.handle('ai:cancel-classify', async () => {
   return { success: false, message: '没有正在进行的分类任务' }
 })
 
-ipcMain.handle('ai:apply', async (_event, folders: { name: string; videoIds: number[]; existing?: boolean }[]) => {
-  await ensureDatabase()
-  const { database: db, databaseMeta: meta } = getDatabaseHandle()
-  let created = 0
-
-  for (const folder of folders) {
-    const existing = db.exec(`SELECT id FROM virtual_folders WHERE name = ?`, [folder.name])
-    let folderId: number
-
-    if (existing.length && existing[0].values.length > 0) {
-      folderId = existing[0].values[0][0] as number
-    } else {
-      const timestamp = new Date().toISOString()
-      db.run(
-        `INSERT INTO virtual_folders (name, created_at, updated_at) VALUES (?, ?, ?)`,
-        [folder.name, timestamp, timestamp],
-      )
-      const newResult = db.exec(`SELECT id FROM virtual_folders WHERE name = ?`, [folder.name])
-      folderId = newResult?.[0]?.values?.[0]?.[0] as number
-      if (folderId > 0) created++
-    }
-
-    // 直接 INSERT 关联，不用 toggle（避免重复调用导致取消关联）
-    for (const videoId of folder.videoIds) {
-      db.run(
-        `INSERT OR IGNORE INTO virtual_folder_videos (virtual_folder_id, video_id, created_at) VALUES (?, ?, ?)`,
-        [folderId, videoId, new Date().toISOString()],
-      )
-    }
-  }
-
-  await persistDatabase(db, meta.databasePath)
-
-  return { success: true, message: `创建 ${created} 个文件夹`, snapshot: await getLibrarySnapshot() }
-})
+ipcMain.handle('ai:apply', (_event, folders: { name: string; videoIds: number[] }[]) => applyClassification(folders))
 
 // ========== 数据库选择 IPC 处理器 ==========
 async function scanDirForDB(dir: string, depth = 0, maxDepth = 3): Promise<Array<{ path: string; size: number }>> {
@@ -519,7 +525,10 @@ ipcMain.handle('db:scan-for-databases', async () => {
 })
 
 ipcMain.handle('db:select-database', async (_event, databasePath: string) => {
-  return loadDatabaseAtPath(databasePath)
+  const snapshot = await loadDatabaseAtPath(databasePath)
+  for (const controller of aiAbortControllers.values()) controller.abort()
+  aiAbortControllers.clear()
+  return snapshot
 })
 
 ipcMain.handle('db:get-current-path', async () => {
@@ -637,70 +646,56 @@ ipcMain.handle('mpv:is-downloading', async () => {
 
 // ========== 窗口控制 ==========
 ipcMain.handle('win:minimize', () => {
-  win?.hide()
+  if (win && !win.isDestroyed()) win.minimize()
 })
 
 ipcMain.handle('win:close', () => {
-  win?.destroy()
   app.quit()
 })
 
-ipcMain.handle('win:isMaximized', () => win?.isMaximized())
+ipcMain.handle('win:isMaximized', () => !!win && !win.isDestroyed() && win.isMaximized())
 
 ipcMain.handle('win:maximize', () => {
-  win?.isMaximized() ? win?.unmaximize() : win?.maximize()
+  if (!win || win.isDestroyed()) return
+  win.isMaximized() ? win.unmaximize() : win.maximize()
 })
 
 // ========== 系统托盘 ==========
-function getTrayIconPath() {
-  const publicIcon = path.join(process.env.VITE_PUBLIC || '', 'electron-vite.ico')
-  const fs = require('fs')
-  if (fs.existsSync(publicIcon)) {
-    return publicIcon
+function getApplicationIcon(forTray = false): Electron.NativeImage {
+  const names = process.platform === 'win32'
+    ? ['videomanager.ico', forTray ? 'videomanager-tray.png' : 'videomanager.png']
+    : [forTray ? 'videomanager-tray.png' : 'videomanager.png']
+  for (const name of names) {
+    const image = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC || RENDERER_DIST, name))
+    if (!image.isEmpty()) return image
   }
-  const distIcon = path.join(process.env.APP_ROOT || '', 'dist', 'electron-vite.ico')
-  if (fs.existsSync(distIcon)) {
-    return distIcon
-  }
-  return ''
+  // Keep a visible icon even if an asset is missing in a damaged installation.
+  return nativeImage.createFromDataURL(fallbackIcon)
 }
 
 let tray: Tray | null = null
 
 function createTray() {
+  if (tray && !tray.isDestroyed()) return
   try {
-    let icon: Electron.NativeImage
-    const iconPath = getTrayIconPath()
-    const fs = require('fs')
-    if (iconPath && fs.existsSync(iconPath)) {
-      icon = nativeImage.createFromPath(iconPath)
-    } else {
-      icon = nativeImage.createEmpty()
-    }
-
-    tray = new Tray(icon)
-    tray.setToolTip('VideoSorter - 本地视频管理')
-
-    tray.on('click', () => {
-      win?.show()
-      win?.focus()
-    })
+    tray = new Tray(getApplicationIcon(true))
+    tray.setToolTip('VideoManager - 本地视频管理')
+    tray.on('click', showMainWindow)
+    tray.on('double-click', showMainWindow)
 
     const contextMenu = Menu.buildFromTemplate([
       {
         label: '打开',
-        click: () => {
-          win?.show()
-          win?.focus()
-        },
+        click: showMainWindow,
+      },
+      {
+        label: '隐藏到托盘',
+        click: () => { if (win && !win.isDestroyed()) win.hide() },
       },
       { type: 'separator' },
       {
         label: '退出',
-        click: () => {
-          win?.destroy()
-          app.quit()
-        },
+        click: () => app.quit(),
       },
     ])
     tray.setContextMenu(contextMenu)
@@ -709,13 +704,11 @@ function createTray() {
   }
 }
 
-function setupWindowBehaviors() {
-  if (!win) return
-  win.on('minimize', (e: Electron.Event) => {
-    e.preventDefault()
-    win?.hide()
-  })
-}
+app.on('before-quit', () => {
+  stopMediaCache()
+  if (tray && !tray.isDestroyed()) tray.destroy()
+  tray = null
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -727,18 +720,21 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
-  }
+    setMpvWindowRef(win)
+  } else showMainWindow()
 })
 
-app.whenReady().then(async () => {
+if (ownsProfile) app.whenReady().then(async () => {
   try {
+    if (process.platform === 'win32') app.setAppUserModelId('com.videomanager.app')
     await ensureDatabase()
     createWindow()
     setMpvWindowRef(win)
     setupMpvIPC()
-    setupWindowBehaviors()
     createTray()
+    void pruneMediaCache().catch(() => {})
     setupAutoUpdater()
+    startMonitor(() => win)
 
     // 后台检查 mpv 是否安装，未安装则自动下载
     const mpvConfig = loadMpvConfig()

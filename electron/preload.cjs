@@ -3,6 +3,14 @@ const { ipcRenderer } = require('electron');
 window.videosorter = {
   getDatabaseMeta: () => ipcRenderer.invoke('database:get-meta'),
   getLibrarySnapshot: () => ipcRenderer.invoke('library:get-snapshot'),
+  getMediaAssets: (id, preview, slot) => ipcRenderer.invoke('media:get', id, preview, slot),
+  warmMedia: (ids, preview) => ipcRenderer.invoke('media:warm', ids, preview),
+  getMediaCacheStats: () => ipcRenderer.invoke('media:stats'),
+  getSeries: () => ipcRenderer.invoke('series:get'),
+  previewSeries: mode => ipcRenderer.invoke('series:preview', mode),
+  applySeries: preview => ipcRenderer.invoke('series:apply', preview),
+  saveSeries: (databasePath, name, ids, id) => ipcRenderer.invoke('series:save', databasePath, name, ids, id),
+  deleteSeries: (databasePath, id) => ipcRenderer.invoke('series:delete', databasePath, id),
   appGetVersion: () => ipcRenderer.invoke('app:get-version'),
   createVirtualFolder: (name) => ipcRenderer.invoke('library:create-folder', name),
   deleteVirtualFolder: (folderId) => ipcRenderer.invoke('library:delete-folder', folderId),
@@ -14,13 +22,34 @@ window.videosorter = {
     ipcRenderer.on('scan:progress', listener);
     return () => ipcRenderer.removeListener('scan:progress', listener);
   },
-  cleanupUnsupported: () => ipcRenderer.invoke('library:cleanup-unsupported'),
+  inspectMissing: () => ipcRenderer.invoke('library:inspect-missing'),
+  cleanupMissing: (ids, databasePath) => ipcRenderer.invoke('library:cleanup-missing', ids, databasePath),
+  previewConditionalCleanup: (conditions) => ipcRenderer.invoke('cleanup:preview', conditions),
+  applyConditionalCleanup: (previewId, ids) => ipcRenderer.invoke('cleanup:apply', previewId, ids),
+  getAutomaticCleanup: () => ipcRenderer.invoke('cleanup:auto-get'),
+  saveAutomaticCleanup: (config) => ipcRenderer.invoke('cleanup:auto-save', config),
+  checkAutomaticCleanup: () => ipcRenderer.invoke('cleanup:auto-check'),
+  rescanDirectory: (options) => ipcRenderer.invoke('library:rescan', options),
+  pickDirectory: () => ipcRenderer.invoke('library:pick-directory'),
+  getMonitors: () => ipcRenderer.invoke('monitor:get'),
+  saveMonitors: (items) => ipcRenderer.invoke('monitor:save', items),
+  checkMonitors: () => ipcRenderer.invoke('monitor:check'),
+  renameVirtualFolder: (id, name) => ipcRenderer.invoke('library:rename-folder', id, name),
+  batchClassify: (ids, folderId, mode) => ipcRenderer.invoke('library:batch-classify', ids, folderId, mode),
+  getClassificationConfig: () => ipcRenderer.invoke('classification:get'),
+  saveClassificationConfig: (config) => ipcRenderer.invoke('classification:save', config),
+  previewClassificationRules: () => ipcRenderer.invoke('classification:preview'),
+  onMonitorUpdate: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('library:monitor-update', listener);
+    return () => ipcRenderer.removeListener('library:monitor-update', listener);
+  },
   openVideo: (filePath) => ipcRenderer.invoke('video:open', filePath),
   getVideoThumbnail: (filePath) => ipcRenderer.invoke('video:get-thumbnail', filePath),
   deleteVideos: (videoIds) => ipcRenderer.invoke('videos:delete', videoIds),
-  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
-  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
-  closeWindow: () => ipcRenderer.invoke('window:close'),
+  minimizeWindow: () => ipcRenderer.invoke('win:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('win:maximize'),
+  closeWindow: () => ipcRenderer.invoke('win:close'),
   // TMDB
   tmdbGetConfig: () => ipcRenderer.invoke('tmdb:get-config'),
   tmdbSetConfig: (apiKey) => ipcRenderer.invoke('tmdb:set-config', apiKey),
@@ -30,8 +59,8 @@ window.videosorter = {
   tmdbManualScrape: (videoId, result) => ipcRenderer.invoke('tmdb:manual-scrape', videoId, result),
   onTMDBScrapeProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);
-    ipcRenderer.on('tmdb:scrape:progress', listener);
-    return () => ipcRenderer.removeListener('tmdb:scrape:progress', listener);
+    ipcRenderer.on('tmdb:scrape-progress', listener);
+    return () => ipcRenderer.removeListener('tmdb:scrape-progress', listener);
   },
   // Database selection
   dbScanForDatabases: () => ipcRenderer.invoke('db:scan-for-databases'),

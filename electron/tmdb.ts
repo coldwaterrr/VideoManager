@@ -118,6 +118,7 @@ export async function scrapeVideoMetadata(
   videoId: number,
   filename: string,
 ): Promise<{ success: boolean; message: string }> {
+  const expectedDatabase = getDatabaseHandle().database
   try {
     const { query, year } = extractSearchTerm(filename)
     if (!query || query.length < 2) {
@@ -209,6 +210,7 @@ export async function scrapeVideoMetadata(
     }
 
     const { database: db, databaseMeta: meta } = getDatabaseHandle()
+    if (db !== expectedDatabase) return { success: false, message: '数据库已切换，已跳过此刮削结果' }
     const now = new Date().toISOString()
 
     db.run(

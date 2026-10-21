@@ -5,7 +5,6 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import electron from 'vite-plugin-electron'
 
-// @ts-ignore - electron plugin types don't match
 export default defineConfig({
   resolve: {
     alias: {
@@ -19,14 +18,9 @@ export default defineConfig({
       {
         // 主进程入口
         entry: 'electron/main.ts',
-        // 输出目录
-        outDir: 'dist-electron',
-        // 格式：ES 模块，但需要 __dirname polyfill
-        format: 'es',
-        nodeIntegration: true,
-        contextIsolation: false,
         vite: {
           build: {
+            outDir: 'dist-electron',
             rollupOptions: {
               external: ['sql.js'], // 将 sql.js 排除在构建之外
             },

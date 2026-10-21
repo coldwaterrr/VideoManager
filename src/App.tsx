@@ -1,47 +1,52 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Clapperboard, Database, Film, Folder, FolderOpen, FolderPlus, HardDrive, LoaderCircle, ScanSearch, Search, Star, Film as FilmIcon, Settings, X, ArrowUpDown, ChevronDown, ChevronUp, Sparkles, Eye, Check, AlertTriangle, Trash2, Download } from 'lucide-react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Clapperboard,
+  Database,
+  Film,
+  FolderOpen,
+  LoaderCircle,
+  Search,
+  Film as FilmIcon,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Eye,
+  Check,
+  Trash2,
+  Download,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TitleBar } from '@/components/TitleBar'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { MpvPlayer } from '@/components/MpvPlayer'
 import { PlayerSelector } from '@/components/PlayerSelector'
+import { LibraryTools } from '@/components/LibraryTools'
+import { VideoCard, formatBytes } from '@/components/VideoCard'
+import { LibrarySidebar, type LibraryFolder } from '@/components/LibrarySidebar'
+import { LibraryFilters, emptyLibraryFilter, type LibraryFilter } from '@/components/LibraryFilters'
+import { Dialog, useDialogFocus } from '@/components/Dialog'
+import { SeriesPanel } from '@/components/SeriesPanel'
+import { SeriesCard } from '@/components/SeriesCard'
+import { videoMediaKey } from '@/lib/media'
+import { Layers } from 'lucide-react'
+import {
+  LayoutGrid,
+  List,
+  SlidersHorizontal,
+  RefreshCw,
+  Plus,
+  CheckSquare,
+  Play,
+  ChevronRight,
+  CircleHelp,
+} from 'lucide-react'
 
-type SidebarFolder = {
-  id: string
-  name: string
-  count: number
-  system: boolean
-}
-
-type Tag = {
-  name: string
-  count: number
-}
-
-interface VideoCardProps {
-  video: VideoRecord
-  index: number
-  isSelected: boolean
-  onSelect: () => void
-  onOpen: () => void
-  folders: VirtualFolderRecord[]
-  onToggleFolder: (folderId: number) => void
-  isMutatingFolder: boolean
-  pendingVideoId: number | null
-  isPreviewMode: boolean
-  onScrape?: (videoId: number) => void
-  canScrape: boolean
-}
-
-const coverClasses = [
-  'from-sky-500/60 via-blue-500/30 to-transparent',
-  'from-violet-500/60 via-fuchsia-500/30 to-transparent',
-  'from-emerald-500/60 via-teal-500/30 to-transparent',
-  'from-amber-500/60 via-orange-500/30 to-transparent',
-  'from-cyan-500/60 via-sky-500/30 to-transparent',
-  'from-pink-500/60 via-rose-500/30 to-transparent',
-]
+type Tag = { name: string; count: number }
+type LibraryEntry =
+  | { kind: 'video'; video: VideoRecord }
+  | { kind: 'series'; group: SeriesGroup; members: VideoRecord[] }
 
 const previewSnapshot: LibrarySnapshot = {
   databaseMeta: {
@@ -60,6 +65,7 @@ const previewSnapshot: LibrarySnapshot = {
       fileSize: 152_000_000,
       durationSeconds: 138,
       modifiedAt: new Date().toISOString(),
+      addedAt: new Date().toISOString(),
       folderIds: [1],
     },
     {
@@ -69,6 +75,7 @@ const previewSnapshot: LibrarySnapshot = {
       fileSize: 1_200_000_000,
       durationSeconds: 1122,
       modifiedAt: new Date().toISOString(),
+      addedAt: new Date().toISOString(),
       folderIds: [2],
     },
     {
@@ -78,6 +85,7 @@ const previewSnapshot: LibrarySnapshot = {
       fileSize: 426_000_000,
       durationSeconds: 571,
       modifiedAt: new Date().toISOString(),
+      addedAt: new Date().toISOString(),
       folderIds: [],
     },
   ],
@@ -85,22 +93,10 @@ const previewSnapshot: LibrarySnapshot = {
   lastScannedAt: new Date().toISOString(),
 }
 
-function formatBytes(bytes: number) {
-  if (bytes <= 0) {
-    return '0 B'
-  }
-
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  const value = bytes / 1024 ** exponent
-
-  return `${value >= 10 || exponent === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[exponent]}`
-}
-
 // 从文本中提取标签（字母数字组合，长度>=2，支持中文）
 function extractTags(text: string): string[] {
   const tags = new Set<string>()
-  
+
   // 提取字母数字和中文组合
   const matches = text.toLowerCase().match(/[a-z0-9\u4e00-\u9fa5]+/g) || []
   for (const match of matches) {
@@ -108,24 +104,20 @@ function extractTags(text: string): string[] {
       tags.add(match)
     }
   }
-  
+
   return Array.from(tags)
 }
 
 // 为视频生成标签（基于文件名、路径和文件夹名）
-function generateVideoTags(
-  videoName: string,
-  absolutePath: string,
-  folderNames: string[]
-): string[] {
+function generateVideoTags(videoName: string, absolutePath: string, folderNames: string[]): string[] {
   const tags = new Set<string>()
-  
+
   // 从文件名提取
   const nameWithoutExt = videoName.replace(/\.[^/.]+$/, '')
   for (const tag of extractTags(nameWithoutExt)) {
     tags.add(tag)
   }
-  
+
   // 从路径提取（最后两级目录）
   const pathParts = absolutePath.split(/[\\/]/).filter(Boolean)
   if (pathParts.length >= 2) {
@@ -133,31 +125,15 @@ function generateVideoTags(
       tags.add(tag)
     }
   }
-  
+
   // 从文件夹名提取
   for (const folderName of folderNames) {
     for (const tag of extractTags(folderName)) {
       tags.add(tag)
     }
   }
-  
+
   return Array.from(tags).sort()
-}
-
-function formatDuration(seconds: number) {
-  if (seconds <= 0) {
-    return '待解析时长'
-  }
-
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const remainingSeconds = seconds % 60
-
-  if (hours > 0) {
-    return [hours, minutes, remainingSeconds].map((value) => String(value).padStart(2, '0')).join(':')
-  }
-
-  return [minutes, remainingSeconds].map((value) => String(value).padStart(2, '0')).join(':')
 }
 
 function formatTimeLabel(value: string | null) {
@@ -179,317 +155,134 @@ function formatTimeLabel(value: string | null) {
   })
 }
 
-// 生成随机封面时间点 (视频的 10%-50%)
-function getRandomThumbnailTime(duration: number): number {
-  if (duration <= 0) return 1
-  const min = Math.max(1, duration * 0.1)
-  const max = Math.max(min + 1, duration * 0.5)
-  return min + Math.random() * (max - min)
-}
-
-function VideoCard({ video, index, isSelected, onSelect, onOpen, folders, onToggleFolder, isMutatingFolder, pendingVideoId, isPreviewMode, onScrape, canScrape }: VideoCardProps) {
-  const [isHovering, setIsHovering] = useState(false)
-  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
-  const previewRef = useRef<HTMLVideoElement>(null)
-  const previewTimesRef = useRef<number[]>([])
-  const currentClipRef = useRef(0)
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // 生成视频封面 - 从随机位置截取
-  useEffect(() => {
-    const videoEl = document.createElement('video')
-    videoEl.crossOrigin = 'anonymous'
-    videoEl.preload = 'auto'
-    videoEl.muted = true
-    
-    videoEl.onloadedmetadata = () => {
-      // 随机选取封面时间点
-      videoEl.currentTime = getRandomThumbnailTime(videoEl.duration)
-    }
-    
-    videoEl.onseeked = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = videoEl.videoWidth
-      canvas.height = videoEl.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(videoEl, 0, 0)
-        setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.8))
-      }
-    }
-    
-    videoEl.onerror = () => {
-      // 如果无法加载视频，保持使用渐变背景
-    }
-    
-    try {
-      videoEl.src = `file:///${video.absolutePath.replace(/\\/g, '/')}`
-    } catch (e) {
-      // 忽略错误
-    }
-    
-    return () => {
-      videoEl.src = ''
-    }
-  }, [video.absolutePath])
-
-  // 多段随机预览：生成5个时间点，每段2-3秒
-  // 使用 timeupdate 事件驱动，避免 seek 冲突
-  useEffect(() => {
-    if (!isHovering) {
-      previewTimesRef.current = []
-    }
-  }, [isHovering])
-
-  const startPreview = useCallback((videoEl: HTMLVideoElement) => {
-    const duration = videoEl.duration
-    if (duration <= 0) return
-    const times: number[] = []
-    const min = Math.max(1, duration * 0.1)
-    const max = Math.max(min + 15, duration * 0.9)
-    for (let i = 0; i < 5; i++) {
-      const start = min + (max - min) * (i / 5)
-      times.push(start + Math.random() * 2)
-    }
-    previewTimesRef.current = times
-    currentClipRef.current = 0
-    videoEl.currentTime = times[0]
-    videoEl.play().catch(() => {})
-  }, [])
-
-  const handlePreviewTimeUpdate = useCallback(() => {
-    if (!previewRef.current || !previewTimesRef.current.length) return
-    const video = previewRef.current
-    const times = previewTimesRef.current
-    const clipIndex = currentClipRef.current
-    const startTime = times[clipIndex]
-    const elapsed = video.currentTime - startTime
-
-    if (elapsed >= 3 || video.currentTime < startTime - 0.5) {
-      // 切换到下一段
-      const nextClip = (clipIndex + 1) % times.length
-      currentClipRef.current = nextClip
-      video.currentTime = times[nextClip]
-    }
-  }, [])
-
-  // 悬停预览开始
-  const handleMouseEnter = useCallback(() => {
-    hoverTimeoutRef.current = setTimeout(() => {
-      setIsHovering(true)
-    }, 500)
-  }, [])
-
-  // 当 preview video 的 metadata 加载完成时开始播放
-  const handlePreviewLoadedMetadata = useCallback(() => {
-    const videoEl = previewRef.current
-    if (videoEl && isHovering) {
-      startPreview(videoEl)
-    }
-  }, [isHovering, startPreview])
-
-  const handleMouseLeave = useCallback(() => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current)
-      hoverTimeoutRef.current = null
-    }
-    setIsHovering(false)
-    previewTimesRef.current = []
-    if (previewRef.current) {
-      previewRef.current.pause()
-    }
-  }, [])
-
-  const coverClass = coverClasses[index % coverClasses.length]
-
-  return (
-    <article
-      className={`group relative rounded-xl border p-4 transition-all duration-200 ${
-        isSelected
-          ? 'border-violet-500/30 bg-zinc-900/60'
-          : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-900/60'
-      }`}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      <div
-        className="absolute left-4 top-4 z-10"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={onSelect}
-          className="size-5 cursor-pointer rounded border-white/20 bg-black/40 accent-white"
-        />
-      </div>
-      <div
-        onClick={onOpen}
-        className="cursor-pointer"
-      >
-        <div
-          className={`mb-4 relative flex h-44 items-end rounded-xl overflow-hidden ${thumbnailUrl ? '' : `bg-gradient-to-br ${coverClass}`} p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition group-hover:scale-[1.01]`}
-        >
-          {thumbnailUrl && (
-            <img
-              src={thumbnailUrl}
-              alt={video.name}
-              className="absolute inset-0 size-full object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none'
-              }}
-            />
-          )}
-          {(video.posterPath || video.title) && (
-            <img
-              src={video.posterPath ? `https://image.tmdb.org/t/p/w500${video.posterPath}` : undefined}
-              alt={video.title || video.name}
-              className="absolute inset-0 size-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
-          )}
-          
-          {/* 悬停预览视频 */}
-          {isHovering && !isPreviewMode && (
-            <video
-              ref={previewRef}
-              src={`file:///${video.absolutePath.replace(/\\/g, '/')}`}
-              className="absolute inset-0 size-full object-cover"
-              muted
-              playsInline
-              preload="auto"
-              onLoadedMetadata={handlePreviewLoadedMetadata}
-              onTimeUpdate={handlePreviewTimeUpdate}
-            />
-          )}
-          
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100">
-            <div className="flex size-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
-              <svg className="size-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            </div>
-          </div>
-          <div className="relative z-10 rounded-full border border-white/12 bg-black/25 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/80">
-            {video.name.split('.').pop() ?? 'VIDEO'}
-          </div>
-        </div>
-        <div className="space-y-2">
-          {video.title ? (
-            <>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="truncate text-base font-medium text-white">
-                    {video.title} {video.releaseDate ? `(${video.releaseDate.slice(0, 4)})` : ''}
-                  </div>
-                </div>
-                {onScrape && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onScrape(video.id) }}
-                    disabled={!canScrape}
-                    className="shrink-0 rounded-full p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition disabled:opacity-30 disabled:hover:bg-transparent"
-                    title="重新刮削"
-                  >
-                    <FilmIcon className="size-4" />
-                  </button>
-                )}
-              </div>
-              {(video.voteAverage ?? 0) > 0 && (
-                <div className="flex items-center gap-1.5 text-sm text-zinc-400">
-                  <Star className="size-3.5 text-yellow-500" />
-                  <span>{(video.voteAverage ?? 0).toFixed(1)}</span>
-                  <span className="text-zinc-600">({video.voteCount ?? 0} 评分)</span>
-                </div>
-              )}
-              {video.originalTitle && video.originalTitle !== video.title && (
-                <div className="truncate text-xs text-zinc-600">{video.originalTitle}</div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="truncate text-base font-medium text-white">{video.name}</div>
-                </div>
-                {onScrape && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onScrape(video.id) }}
-                    disabled={!canScrape}
-                    className="shrink-0 rounded-full p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition disabled:opacity-30 disabled:hover:bg-transparent"
-                    title="刮削元数据"
-                  >
-                    <FilmIcon className="size-4" />
-                  </button>
-                )}
-              </div>
-              <div className="truncate text-sm text-zinc-500">{video.absolutePath}</div>
-              <div className="flex items-center justify-between pt-1 text-sm text-zinc-400">
-                <span>{formatDuration(video.durationSeconds)}</span>
-                <span>{formatBytes(video.fileSize)}</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <div className="text-xs uppercase tracking-[0.24em] text-zinc-600">归类到虚拟文件夹</div>
-        <div className="flex flex-wrap gap-2">
-        {folders.map((folder: VirtualFolderRecord) => {
-         const assigned = video.folderIds.includes(folder.id)
-
-         return (
-           <button
-             key={`${video.id}-${folder.id}`}
-             type="button"
-             onClick={() => onToggleFolder(folder.id)}
-             disabled={isMutatingFolder || isPreviewMode}
-             className={`rounded-full px-3 py-1.5 text-xs transition ${
-               assigned
-                 ? 'bg-white text-zinc-950'
-                 : 'bg-white/[0.05] text-zinc-400 hover:bg-white/[0.1] hover:text-white'
-             }`}
-           >
-             {pendingVideoId === video.id && isMutatingFolder ? (
-               <LoaderCircle className="size-3.5 animate-spin" />
-             ) : (
-               folder.name
-             )}
-           </button>
-         )
-       })}
-       </div>
-     </div>
-    </article>
-  )
-}
-
 function App() {
   const [activeFolderId, setActiveFolderId] = useState('all')
-  const [contextMenuFolder, setContextMenuFolder] = useState<{ id: string; name: string; x: number; y: number } | null>(null)
+  const [seriesState, setSeriesState] = useState<SeriesState>({ databasePath: '', groups: [] })
+  const [showSeries, setShowSeries] = useState(false)
+  const [activeSeriesId, setActiveSeriesId] = useState<string | null>(null)
+  const [collapseSeries, setCollapseSeries] = useState(() => {
+    try {
+      return localStorage.getItem('vm-collapse-series') !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const [mediaStats, setMediaStats] = useState<{
+    bytes: number
+    thumbnails: number
+    previews: number
+    limitBytes: number
+  } | null>(null)
+  const activeSeries = seriesState.groups.find((group) => group.id === activeSeriesId)
+  useEffect(() => {
+    if (activeSeriesId && !activeSeries) setActiveSeriesId(null)
+  }, [activeSeriesId, activeSeries])
+  useEffect(() => {
+    try {
+      localStorage.setItem('vm-collapse-series', String(collapseSeries))
+    } catch {
+      /* preference is optional */
+    }
+  }, [collapseSeries])
+
+  const [contextMenuFolder, setContextMenuFolder] = useState<{
+    id: string
+    name: string
+    x: number
+    y: number
+  } | null>(null)
   const [keyword, setKeyword] = useState('')
   const [newFolderName, setNewFolderName] = useState('')
+  const [newFolderError, setNewFolderError] = useState('')
+  const [removeIds, setRemoveIds] = useState<number[] | null>(null)
+  const [removeError, setRemoveError] = useState('')
+  const [folderBusy, setFolderBusy] = useState(false)
+  const [folderError, setFolderError] = useState('')
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
-  const [isPreviewMode, setIsPreviewMode] = useState(false)
+  const [isPreviewMode, setIsPreviewMode] = useState(!window.videosorter)
   const [isScanning, setIsScanning] = useState(false)
   const [isMutatingFolder, setIsMutatingFolder] = useState(false)
-  const [isCleaningUp, setIsCleaningUp] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [pendingVideoId, setPendingVideoId] = useState<number | null>(null)
   const [statusText, setStatusText] = useState('正在加载资源库…')
-  const [snapshot, setSnapshot] = useState<LibrarySnapshot>(previewSnapshot)
+  const [snapshot, setSnapshot] = useState<LibrarySnapshot>(() =>
+    window.videosorter
+      ? {
+          ...previewSnapshot,
+          videos: [],
+          folders: [],
+          lastScanDirectory: null,
+          lastScannedAt: null,
+          databaseMeta: { databasePath: '正在加载…', tables: [] },
+        }
+      : previewSnapshot
+  )
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null)
   const [scannedFiles, setScannedFiles] = useState<string[]>([])
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 12
-  
+  const [pageSize, setPageSize] = useState(24)
+  const [toolsTab, setToolsTab] = useState<'monitor' | 'cleanup' | 'conditional' | 'rules' | null>(null)
+  const [batchFolderId, setBatchFolderId] = useState('')
+  const [renamingFolder, setRenamingFolder] = useState<{ id: number; name: string } | null>(null)
+
   // 扫描筛选器
   const [showFilter, setShowFilter] = useState(false)
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>(emptyLibraryFilter)
+  const [view, setView] = useState<'grid' | 'list'>(() => {
+    try {
+      return localStorage.getItem('vm-library-view') === 'list' ? 'list' : 'grid'
+    } catch {
+      return 'grid'
+    }
+  })
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [showCreateFolder, setShowCreateFolder] = useState(false)
+  const [previewEnabled, setPreviewEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('vm-hover-preview') !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const searchRef = useRef<HTMLInputElement>(null)
+  const legacyModalRef = useRef<HTMLDivElement>(null)
+  const deferredKeyword = useDeferredValue(keyword)
+  useEffect(() => {
+    try {
+      localStorage.setItem('vm-library-view', view)
+    } catch {
+      /* optional preference */
+    }
+  }, [view])
+  useEffect(() => {
+    try {
+      localStorage.setItem('vm-hover-preview', String(previewEnabled))
+    } catch {
+      /* optional preference */
+    }
+  }, [previewEnabled])
   const [filterMinSize, setFilterMinSize] = useState(0) // MB
   const [filterMaxSize, setFilterMaxSize] = useState(0) // MB, 0表示不限制
-  const [filterFormats, setFilterFormats] = useState<string[]>(['.mp4', '.mkv', '.avi', '.mov', '.wmv'])
-  
+  const [filterFormats, setFilterFormats] = useState<string[]>([
+    '.mp4',
+    '.mkv',
+    '.avi',
+    '.mov',
+    '.wmv',
+    '.webm',
+    '.m4v',
+    '.flv',
+    '.ts',
+    '.mts',
+    '.m2ts',
+    '.mpeg',
+    '.mpg',
+  ])
+
   // 标签相关状态
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
@@ -518,6 +311,7 @@ function App() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // 内置播放器状态
+  const [playbackQueue, setPlaybackQueue] = useState<VideoRecord[]>([])
   const [playingVideo, setPlayingVideo] = useState<{ path: string; name: string; index: number } | null>(null)
 
   // MPV 播放器相关状态
@@ -533,7 +327,9 @@ function App() {
   // 播放器选择
   const [defaultPlayer, setDefaultPlayer] = useState<'web' | 'mpv' | 'system'>('web')
   // MPV 下载通知
-  const [mpvDownload, setMpvDownload] = useState<{ stage: string; percent: number; message: string } | null>(null)
+  const [mpvDownload, setMpvDownload] = useState<{ stage: string; percent: number; message: string } | null>(
+    null
+  )
 
   useEffect(() => {
     if (!window.videosorter) return
@@ -560,7 +356,11 @@ function App() {
   // AI 分类相关状态
   const [showAiClassify, setShowAiClassify] = useState(false)
   const [aiRule, setAiRule] = useState('')
-  const [aiConfig, setAiConfig] = useState<AIConfig>({ apiKey: '', baseUrl: 'https://openrouter.ai/api/v1', model: 'qwen/qwen3.6-plus:free' })
+  const [aiConfig, setAiConfig] = useState<AIConfig>({
+    apiKey: '',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'qwen/qwen3.6-plus:free',
+  })
   const [aiTestResult, setAiTestResult] = useState<AITestResult | null>(null)
   const [aiIsTesting, setAiIsTesting] = useState(false)
   const [aiClassifying, setAiClassifying] = useState(false)
@@ -582,27 +382,97 @@ function App() {
 
   // 自动更新相关状态
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
-  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'>('idle')
+  const [updateStatus, setUpdateStatus] = useState<
+    'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+  >('idle')
   const [updateVersion, setUpdateVersion] = useState('')
   const [updateProgress, setUpdateProgress] = useState(0)
   const [updateError, setUpdateError] = useState('')
+  useEffect(() => {
+    if (
+      !window.videosorter ||
+      !snapshot.databaseMeta.databasePath ||
+      snapshot.databaseMeta.databasePath === '正在加载…'
+    )
+      return
+    let disposed = false
+    setShowSeries(false)
+    setActiveSeriesId(null)
+    setSeriesState({ databasePath: snapshot.databaseMeta.databasePath, groups: [] })
+    void window.videosorter
+      .getSeries()
+      .then((value) => {
+        if (!disposed && value.databasePath === snapshot.databaseMeta.databasePath) setSeriesState(value)
+      })
+      .catch((error) => {
+        if (!disposed) setStatusText(String(error))
+      })
+    return () => {
+      disposed = true
+    }
+  }, [snapshot.databaseMeta.databasePath])
+  const libraryMemberIds = snapshot.videos.map((video) => video.id).join(',')
+  useEffect(() => {
+    const valid = new Set(libraryMemberIds.split(',').map(Number))
+    setSeriesState((previous) => ({
+      ...previous,
+      groups: previous.groups
+        .map((group) => ({ ...group, videoIds: group.videoIds.filter((id) => valid.has(id)) }))
+        .filter((group) => group.videoIds.length),
+    }))
+  }, [libraryMemberIds])
+  useEffect(() => {
+    const updates = new Map<number, { key: string; durationSeconds: number }>()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: number; key: string; durationSeconds: number }>).detail
+      if (!detail || !Number.isFinite(detail.durationSeconds) || detail.durationSeconds <= 0) return
+      updates.set(detail.id, detail)
+      if (!timer)
+        timer = setTimeout(() => {
+          setSnapshot((previous) => ({
+            ...previous,
+            videos: previous.videos.map((video) => {
+              const change = updates.get(video.id)
+              return change && change.key === videoMediaKey(video)
+                ? { ...video, durationSeconds: change.durationSeconds }
+                : video
+            }),
+          }))
+          updates.clear()
+          timer = null
+        }, 100)
+    }
+    window.addEventListener('vm-media-metadata', handler)
+    return () => {
+      window.removeEventListener('vm-media-metadata', handler)
+      if (timer) clearTimeout(timer)
+    }
+  }, [])
+  useEffect(() => {
+    if (showSettings)
+      void window.videosorter
+        ?.getMediaCacheStats()
+        .then(setMediaStats)
+        .catch(() => {})
+  }, [showSettings])
   // 为视频生成标签
   const videosWithTags = useMemo(() => {
     const folderMap = new Map<number, string>()
     for (const folder of snapshot.folders) {
       folderMap.set(folder.id, folder.name)
     }
-    
+
     return snapshot.videos.map((video) => {
       const videoFolderNames = video.folderIds
         .map((id) => folderMap.get(id))
         .filter((name): name is string => !!name)
-      
+
       const tags = generateVideoTags(video.name, video.absolutePath, videoFolderNames)
       return { ...video, tags }
     })
   }, [snapshot.videos, snapshot.folders])
-  
+
   // 计算所有标签
   useEffect(() => {
     const tagCounts = new Map<string, number>()
@@ -611,15 +481,17 @@ function App() {
         tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1)
       }
     }
-    
+
     const tags = Array.from(tagCounts.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
-    
+
     setAllTags(tags)
   }, [videosWithTags])
 
   useEffect(() => {
+    let unsubscribeScan: (() => void) | undefined
+    let disposed = false
     async function bootstrap() {
       if (!window.videosorter) {
         setIsPreviewMode(true)
@@ -630,30 +502,43 @@ function App() {
 
       try {
         const nextSnapshot = await window.videosorter.getLibrarySnapshot()
+        if (disposed) return
         setSnapshot(nextSnapshot)
         setStatusText(
           nextSnapshot.videos.length > 0
             ? `已载入 ${nextSnapshot.videos.length} 个视频`
-            : '数据库已初始化，点击"扫描目录"开始导入本地视频。',
+            : '数据库已初始化，点击"扫描目录"开始导入本地视频。'
         )
 
-        window.videosorter.onScanProgress((progress) => {
+        unsubscribeScan = window.videosorter.onScanProgress((progress) => {
           setScanProgress(progress)
           if (progress.type === 'found' && progress.filePath) {
-            setScannedFiles((prev) => [...prev, progress.filePath!])
+            setScannedFiles((prev) => [...prev.slice(-99), progress.filePath!])
           }
           if (progress.type === 'complete') {
-            setStatusText(progress.message)
+            setStatusText(progress.message || '')
           }
         })
-      } catch {
-        setIsPreviewMode(true)
-        setSnapshot(previewSnapshot)
-        setStatusText('桌面桥接未就绪，已回退到预览数据。')
+      } catch (error) {
+        if (disposed) return
+        setSnapshot({ ...previewSnapshot, videos: [], folders: [] })
+        setStatusText(`资源库加载失败：${String(error)}`)
       }
     }
 
     void bootstrap()
+    return () => {
+      disposed = true
+      unsubscribeScan?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!window.videosorter) return
+    return window.videosorter.onMonitorUpdate((event) => {
+      if (event.snapshot) setSnapshot(event.snapshot)
+      if (event.message || event.error) setStatusText(event.message || `自动检测失败：${event.error}`)
+    })
   }, [])
 
   // TMDB 相关函数
@@ -767,6 +652,15 @@ function App() {
       const nextSnapshot = await window.videosorter.dbSelectDatabase(databasePath)
       setSnapshot(nextSnapshot)
       setCurrentDbPath(databasePath)
+      setPlayingVideo(null)
+      setAiPreview(null)
+      setShowAiNotification(false)
+      setSelectedVideoIds(new Set())
+      setActiveFolderId('all')
+      setKeyword('')
+      setSelectedTag(null)
+      setLibraryFilter(emptyLibraryFilter)
+      setToolsTab(null)
       setStatusText(`已切换数据库: ${databasePath.split(/[\\/]/).pop()}`)
       setShowDbSelector(false)
     } catch (error) {
@@ -787,7 +681,13 @@ function App() {
     }
   }
 
-  async function handleSaveMpvConfig(updates: { anime4k?: boolean; interpolation?: boolean; interpolationFps?: number; superResShader?: 'anime4k' | 'fsrcnnx' | 'none'; mpvPath?: string }) {
+  async function handleSaveMpvConfig(updates: {
+    anime4k?: boolean
+    interpolation?: boolean
+    interpolationFps?: number
+    superResShader?: 'anime4k' | 'fsrcnnx' | 'none'
+    mpvPath?: string
+  }) {
     if (!window.videosorter?.mpvSaveConfig) return
     const newConfig = { ...mpvConfigState, ...updates }
     setMpvConfigState(newConfig)
@@ -919,29 +819,6 @@ function App() {
     }
   }
 
-  // 从底部通知直接应用分类
-  async function handleAiApplyDirect() {
-    if (!window.videosorter?.aiApply || !aiPreview) return
-    try {
-      const result = await window.videosorter.aiApply(aiPreview.folders)
-      if (result.success) {
-        const nextSnapshot = await window.videosorter.getLibrarySnapshot()
-        setSnapshot(nextSnapshot)
-        setStatusText(`AI 分类已应用: ${result.message}`)
-      } else {
-        setStatusText(result.message)
-      }
-    } catch {
-      setStatusText('应用分类结果失败')
-    } finally {
-      setShowAiNotification(false)
-      setAiPreview(null)
-      setAiMessage('')
-      setAiReasoning('')
-      setAiRawContent('')
-    }
-  }
-
   useEffect(() => {
     if (window.videosorter) {
       void loadTmdbConfig()
@@ -1018,7 +895,7 @@ function App() {
 
   const filteredVideos = useMemo(() => {
     return videosWithTags.filter((video) => {
-      const normalizedKeyword = keyword.trim().toLowerCase()
+      const normalizedKeyword = deferredKeyword.trim().toLowerCase()
       const customFolderId = activeFolderId.startsWith('folder-')
         ? Number(activeFolderId.replace('folder-', ''))
         : null
@@ -1026,11 +903,25 @@ function App() {
       const matchesKeyword =
         normalizedKeyword.length === 0 ||
         video.name.toLowerCase().includes(normalizedKeyword) ||
+        (video.title || '').toLowerCase().includes(normalizedKeyword) ||
         video.absolutePath.toLowerCase().includes(normalizedKeyword)
 
       if (!matchesKeyword) {
         return false
       }
+
+      if (activeSeries && !activeSeries.videoIds.includes(video.id)) return false
+      if (selectedTag && !video.tags.includes(selectedTag)) return false
+      if (libraryFilter.format && !video.name.toLowerCase().endsWith('.' + libraryFilter.format)) return false
+      if (libraryFilter.minSize !== '' && video.fileSize < Number(libraryFilter.minSize) * 1024 * 1024)
+        return false
+      if (libraryFilter.maxSize !== '' && video.fileSize > Number(libraryFilter.maxSize) * 1024 * 1024)
+        return false
+      const duration = video.durationSeconds
+      if (libraryFilter.duration === 'short' && !(duration > 0 && duration < 300)) return false
+      if (libraryFilter.duration === 'medium' && !(duration >= 300 && duration < 1800)) return false
+      if (libraryFilter.duration === 'long' && !(duration >= 1800)) return false
+      if (libraryFilter.duration === 'unknown' && duration > 0) return false
 
       if (activeFolderId === 'all') {
         return true
@@ -1051,31 +942,105 @@ function App() {
 
       return true
     })
-  }, [activeFolderId, keyword, selectedTag, videosWithTags])
+  }, [activeFolderId, deferredKeyword, selectedTag, videosWithTags, libraryFilter, activeSeries])
 
   // 排序
   const sortedVideos = useMemo(() => {
     return [...filteredVideos].sort((a, b) => {
       let result = 0
-      if (sortField === 'name') result = a.name.localeCompare(b.name)
+      if (sortField === 'name')
+        result = (a.title || a.name).localeCompare(b.title || b.name, 'zh-CN', {
+          numeric: true,
+          sensitivity: 'base',
+        })
       else if (sortField === 'size') result = a.fileSize - b.fileSize
       else result = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime()
       return sortOrder === 'desc' ? -result : result
     })
   }, [filteredVideos, sortField, sortOrder])
 
-  const totalPages = Math.ceil(sortedVideos.length / pageSize)
-  const paginatedVideos = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return sortedVideos.slice(start, start + pageSize)
-  }, [sortedVideos, currentPage, pageSize])
+  const displayEntries = useMemo<LibraryEntry[]>(() => {
+    if (!collapseSeries || selectionMode || activeSeriesId)
+      return sortedVideos.map((video) => ({ kind: 'video', video }))
+    const visible = new Map<number, VideoRecord>(sortedVideos.map((video) => [video.id, video]))
+    const byVideo = new Map<number, { group: SeriesGroup; members: VideoRecord[] }>()
+    for (const group of seriesState.groups) {
+      const members = group.videoIds
+        .map((id) => visible.get(id))
+        .filter((video): video is VideoRecord => !!video)
+      if (members.length >= 2) members.forEach((video) => byVideo.set(video.id, { group, members }))
+    }
+    const seen = new Set<string>()
+    const entries: LibraryEntry[] = []
+    for (const video of sortedVideos) {
+      const grouped = byVideo.get(video.id)
+      if (!grouped) entries.push({ kind: 'video', video })
+      else if (!seen.has(grouped.group.id)) {
+        entries.push({ kind: 'series', ...grouped })
+        seen.add(grouped.group.id)
+      }
+    }
+    return entries
+  }, [sortedVideos, seriesState.groups, collapseSeries, selectionMode, activeSeriesId])
+  const totalPages = Math.ceil(displayEntries.length / pageSize)
+  const paginatedEntries = useMemo(
+    () => displayEntries.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [displayEntries, currentPage, pageSize]
+  )
+  const warmIds = paginatedEntries
+    .map((entry) => (entry.kind === 'series' ? entry.members[0].id : entry.video.id))
+    .join(',')
+  useEffect(() => {
+    if (isPreviewMode) return
+    const ids = warmIds ? warmIds.split(',').map(Number) : []
+    void window.videosorter
+      ?.warmMedia(
+        ids,
+        previewEnabled &&
+          !selectionMode &&
+          !playingVideo &&
+          !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      )
+      .catch(() => {})
+  }, [
+    warmIds,
+    isPreviewMode,
+    previewEnabled,
+    selectionMode,
+    playingVideo,
+    snapshot.databaseMeta.databasePath,
+  ])
 
   // 切换文件夹或搜索时重置到第一页
   useEffect(() => {
     setCurrentPage(1)
-  }, [activeFolderId, keyword, selectedTag])
+  }, [
+    activeFolderId,
+    deferredKeyword,
+    selectedTag,
+    pageSize,
+    libraryFilter,
+    activeSeriesId,
+    selectionMode,
+    collapseSeries,
+  ])
 
-  const sidebarFolders = useMemo<SidebarFolder[]>(() => {
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, Math.max(1, totalPages)))
+  }, [totalPages])
+  useEffect(() => {
+    const visible = new Set(sortedVideos.map((video) => video.id))
+    setSelectedVideoIds((previous) => new Set([...previous].filter((id) => visible.has(id))))
+  }, [sortedVideos])
+  useEffect(() => {
+    if (
+      activeFolderId.startsWith('folder-') &&
+      !snapshot.folders.some((folder) => `folder-${folder.id}` === activeFolderId)
+    )
+      setActiveFolderId('all')
+  }, [snapshot.folders, activeFolderId])
+
+  const sidebarFolders = useMemo<LibraryFolder[]>(() => {
     const allVideosCount = snapshot.videos.length
     const unclassifiedCount = snapshot.videos.filter((video) => video.folderIds.length === 0).length
 
@@ -1112,6 +1077,10 @@ function App() {
       }
       const result = await window.videosorter.scanDirectory(filterOptions)
       setSnapshot(result.snapshot)
+      if (!result.cancelled && result.snapshot.scanSummary)
+        setStatusText(
+          `扫描完成：新增 ${result.snapshot.scanSummary.added}，更新 ${result.snapshot.scanSummary.updated}，未变化 ${result.snapshot.scanSummary.unchanged}`
+        )
       if (result.cancelled) {
         setStatusText('已取消目录选择。')
         setScanProgress(null)
@@ -1158,15 +1127,21 @@ function App() {
       return
     }
 
+    setNewFolderError('')
     setIsCreatingFolder(true)
 
     try {
       const nextSnapshot = await window.videosorter.createVirtualFolder(normalizedName)
       setSnapshot(nextSnapshot)
       setNewFolderName('')
+      setShowCreateFolder(false)
+      const created = nextSnapshot.folders.find((folder) => folder.name === normalizedName)
+      if (created) setActiveFolderId(`folder-${created.id}`)
       setStatusText(`已创建虚拟文件夹“${normalizedName}”。`)
     } catch (error) {
-      setStatusText(error instanceof Error ? error.message : '创建文件夹失败。')
+      const message = error instanceof Error ? error.message : '创建文件夹失败。'
+      setNewFolderError(message)
+      setStatusText(message)
     } finally {
       setIsCreatingFolder(false)
     }
@@ -1195,9 +1170,12 @@ function App() {
 
   function handleOpenVideo(video: VideoRecord) {
     if (defaultPlayer === 'system') {
-      window.videosorter?.openVideo(video.absolutePath)
+      void window.videosorter?.openVideo(video.absolutePath).then((result) => {
+        if (!result.success) setStatusText(result.error || '打开视频失败')
+      })
       return
     }
+    setPlaybackQueue(sortedVideos)
     const playIndex = sortedVideos.findIndex((v) => v.id === video.id)
     setPlayingVideo({
       path: video.absolutePath,
@@ -1206,24 +1184,40 @@ function App() {
     })
   }
 
-  async function handleCleanupUnsupported() {
-    if (!window.videosorter) {
-      setStatusText('浏览器预览模式不支持清理操作。')
-      return
-    }
-    setIsCleaningUp(true)
-    setStatusText('正在清理不支持的视频格式...')
+  async function handleRescan() {
+    if (!window.videosorter) return
+    setIsScanning(true)
     try {
-      const result = await window.videosorter.cleanupUnsupported()
-      setSnapshot(result.snapshot)
-      setStatusText(`清理完成，已删除 ${result.deletedCount} 条记录。`)
+      const result = await window.videosorter.rescanDirectory({
+        minSizeMB: filterMinSize,
+        maxSizeMB: filterMaxSize,
+        formats: filterFormats,
+      })
+      setSnapshot(result)
+      setStatusText(
+        `增量扫描完成：新增 ${result.scanSummary?.added || 0}，更新 ${result.scanSummary?.updated || 0}`
+      )
     } catch (error) {
-      setStatusText(error instanceof Error ? error.message : '清理失败。')
+      setStatusText(String(error))
     } finally {
-      setIsCleaningUp(false)
+      setIsScanning(false)
     }
   }
-
+  async function handleBatchClassify(mode: 'add' | 'remove') {
+    if (!window.videosorter || !batchFolderId) return
+    setIsMutatingFolder(true)
+    try {
+      setSnapshot(
+        await window.videosorter.batchClassify(Array.from(selectedVideoIds), Number(batchFolderId), mode)
+      )
+      setSelectedVideoIds(new Set())
+      setStatusText(mode === 'add' ? '已批量加入分类。' : '已批量移出分类。')
+    } catch (error) {
+      setStatusText(String(error))
+    } finally {
+      setIsMutatingFolder(false)
+    }
+  }
   function handleToggleSelect(videoId: number) {
     setSelectedVideoIds((prev) => {
       const next = new Set(prev)
@@ -1244,612 +1238,1020 @@ function App() {
     }
   }
 
-  async function handleDeleteSelected() {
-    if (!window.videosorter) {
-      setStatusText('浏览器预览模式不支持删除操作。')
-      return
-    }
-    if (selectedVideoIds.size === 0) {
-      setStatusText('请先选择要删除的视频。')
-      return
-    }
-    const count = selectedVideoIds.size
-    if (!confirm(`确定要删除选中的 ${count} 个视频记录吗？`)) {
-      return
-    }
+  function handleDeleteSelected() {
+    if (selectedVideoIds.size === 0 || !window.videosorter) return
+    setRemoveError('')
+    setRemoveIds([...selectedVideoIds])
+  }
+  async function confirmRemoveSelected() {
+    if (!window.videosorter || !removeIds?.length || isDeleting) return
     setIsDeleting(true)
-    setStatusText(`正在删除 ${count} 个视频记录...`)
+    setRemoveError('')
     try {
-      const result = await window.videosorter.deleteVideos(Array.from(selectedVideoIds))
+      const result = await window.videosorter.deleteVideos(removeIds)
       setSnapshot(result.snapshot)
       setSelectedVideoIds(new Set())
-      setStatusText(`已删除 ${result.deletedCount} 个视频记录。`)
+      setRemoveIds(null)
+      setStatusText(`已移除 ${result.deletedCount} 条视频记录，原视频文件已保留。`)
     } catch (error) {
-      setStatusText(error instanceof Error ? error.message : '删除失败。')
+      setRemoveError(error instanceof Error ? error.message : '移除记录失败，请重试。')
     } finally {
       setIsDeleting(false)
     }
   }
 
+  const legacyDialog = showDbSelector
+    ? 'database'
+    : showManualScrape
+      ? 'manual'
+      : showAiClassify && !showAiNotification
+        ? 'ai'
+        : showMpvConfig
+          ? 'mpv'
+          : showUpdateDialog
+            ? 'update'
+            : showTmdbConfig
+              ? 'tmdb'
+              : ''
+  useDialogFocus(
+    legacyModalRef,
+    () => {
+      if (legacyDialog === 'database') setShowDbSelector(false)
+      if (legacyDialog === 'manual') setShowManualScrape(false)
+      if (legacyDialog === 'ai') setShowAiClassify(false)
+      if (legacyDialog === 'mpv') setShowMpvConfig(false)
+      if (legacyDialog === 'update') setShowUpdateDialog(false)
+      if (legacyDialog === 'tmdb') setShowTmdbConfig(false)
+    },
+    isSwitchingDb || aiApplying || manualScrapeLoading,
+    !!legacyDialog,
+    legacyDialog
+  )
+
+  useEffect(() => {
+    const closeFolders = (event: PointerEvent) => {
+      if (!(event.target as HTMLElement).closest('.card-folders'))
+        document.querySelectorAll<HTMLDetailsElement>('.card-folders[open]').forEach((details) => {
+          details.open = false
+        })
+    }
+    document.addEventListener('pointerdown', closeFolders)
+    return () => document.removeEventListener('pointerdown', closeFolders)
+  }, [])
+
+  const activeFilterCount =
+    Object.values(libraryFilter).filter((value) => value !== '').length + (selectedTag ? 1 : 0)
+  const totalSize = snapshot.videos.reduce((sum, video) => sum + video.fileSize, 0)
+  function resetFilters() {
+    setLibraryFilter(emptyLibraryFilter)
+    setSelectedTag(null)
+  }
+  function resetSearch() {
+    resetFilters()
+    setKeyword('')
+  }
+  function openSetting(action: () => void) {
+    setShowSettings(false)
+    action()
+  }
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement
+      const inInput =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable ||
+        target instanceof HTMLSelectElement
+      const hasOverlay =
+        !!document.querySelector('[role="dialog"], [aria-modal="true"]') ||
+        playingVideo ||
+        showTmdbConfig ||
+        showMpvConfig ||
+        showAiClassify ||
+        showManualScrape ||
+        showDbSelector ||
+        showUpdateDialog
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !hasOverlay) {
+        event.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      }
+      if (event.key === 'Escape' && !hasOverlay) {
+        setContextMenuFolder(null)
+        document.querySelectorAll<HTMLDetailsElement>('.card-folders[open]').forEach((details) => {
+          details.open = false
+        })
+        if (selectionMode || selectedVideoIds.size) {
+          setSelectionMode(false)
+          setSelectedVideoIds(new Set())
+        } else if (document.activeElement === searchRef.current) {
+          setKeyword('')
+          searchRef.current?.blur()
+        }
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === 'a' && !inInput && !hasOverlay && selectionMode) {
+        event.preventDefault()
+        handleSelectAll()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [
+    selectionMode,
+    selectedVideoIds,
+    sortedVideos,
+    playingVideo,
+    showTmdbConfig,
+    showMpvConfig,
+    showAiClassify,
+    showManualScrape,
+    showDbSelector,
+    showUpdateDialog,
+  ])
+
   return (
-    <div className="min-h-screen bg-transparent text-zinc-50" onClick={() => setContextMenuFolder(null)}>
+    <div className="app-root" onClick={() => setContextMenuFolder(null)}>
+      <a className="skip-link" href="#library-content">
+        跳到视频列表
+      </a>
       <TitleBar />
-      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col px-6 pb-6">
-        <header className="flex flex-col gap-5 pb-6 pt-2 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.06] text-white shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
-              <Clapperboard className="size-5" />
+      <div className={`app-workspace ${sidebarCollapsed ? 'sidebar-compact' : ''}`}>
+        <LibrarySidebar
+          folders={sidebarFolders}
+          activeId={activeFolderId}
+          onNavigate={(id) => {
+            setActiveFolderId(id)
+            setActiveSeriesId(null)
+          }}
+          onSeries={() => setShowSeries(true)}
+          onCreate={() => {
+            setNewFolderError('')
+            setShowCreateFolder(true)
+          }}
+          onManageFolder={(folder, x, y) =>
+            setContextMenuFolder({
+              id: folder.id,
+              name: folder.name,
+              x: Math.min(x, window.innerWidth - 190),
+              y: Math.min(y, window.innerHeight - 110),
+            })
+          }
+          onTool={setToolsTab}
+          onSettings={() => setShowSettings(true)}
+          disabled={isPreviewMode}
+          totalSize={formatBytes(totalSize)}
+          lastDirectory={snapshot.lastScanDirectory}
+          collapsed={sidebarCollapsed}
+          onCollapse={() => setSidebarCollapsed((value) => !value)}
+        />
+        <div className="workspace-content">
+          <header className="workspace-topbar">
+            <div className="breadcrumb">
+              <Film size={15} />
+              <span>我的视频库</span>
+              <ChevronRight size={13} />
+              <strong>{activeFolder.name}</strong>
             </div>
-            <div>
-              <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">VideoSorter</div>
-              <div className="mt-1 text-2xl font-semibold tracking-tight text-white">本地视频映射管理</div>
+            <div className="topbar-right">
+              {isPreviewMode && <span className="preview-badge">演示模式</span>}
+              <button
+                className="icon-button"
+                aria-label="使用帮助"
+                title="使用帮助"
+                onClick={() => {
+                  setShowSettings(true)
+                }}
+              >
+                <CircleHelp size={18} />
+              </button>
             </div>
-          </div>
-
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-5 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.35)] xl:mx-0">
-            <Search className="size-5 shrink-0 text-zinc-500" />
-            <Input
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="搜索视频名称或绝对路径"
-              className="h-auto border-0 bg-transparent px-0 py-0 text-base text-zinc-50 shadow-none placeholder:text-zinc-500 focus-visible:ring-0 focus:placeholder-transparent"
-            />
-          </div>
-        </header>
-
-        <div className="grid flex-1 grid-cols-1 gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="flex min-h-[760px] flex-col rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 backdrop-blur-md min-w-[280px]">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-white">资源库状态</div>
-                <div className="rounded-lg border border-zinc-800 px-3 py-1 text-[11px] text-zinc-400">
-                  {isPreviewMode ? '预览模式' : '桌面模式'}
-                </div>
+          </header>
+          <main id="library-content" tabIndex={-1}>
+            <div className="library-heading">
+              <div>
+                <h1>
+                  {activeFolder.name}
+                  <span>{activeFolder.count.toLocaleString()}</span>
+                </h1>
+                <p>
+                  {activeFolderId === 'unclassified'
+                    ? '给还没有归属的影像，找到合适的位置。'
+                    : activeFolder.system
+                      ? '所有精彩，都在这里。'
+                      : '你的专属影像收藏。'}
+                </p>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-white/[0.04] p-3">
-                  <div className="text-xs text-zinc-500">视频总数</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{snapshot.videos.length}</div>
-                </div>
-                <div className="rounded-2xl bg-white/[0.04] p-3">
-                  <div className="text-xs text-zinc-500">自定义文件夹</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{snapshot.folders.length}</div>
-                </div>
-              </div>
-              <div className="mt-4 rounded-2xl bg-white/[0.04] p-3 text-xs text-zinc-400">
-                <div className="flex items-center gap-2 text-zinc-200">
-                  <Database className="size-3.5" />
-                  SQLite
-                </div>
-                <div className="mt-2 truncate">{snapshot.databaseMeta.databasePath}</div>
-              </div>
-            </div>
-
-            <div className="px-1 pb-4 pt-6">
-              <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Folders</div>
-              <div className="mt-2 text-2xl font-semibold text-white">虚拟文件夹</div>
-            </div>
-
-            <div className="space-y-1.5">
-              {sidebarFolders.map((folder) => {
-                const isActive = folder.id === activeFolderId
-                const Icon = folder.id === 'all' ? Film : folder.system ? HardDrive : FolderOpen
-
-                return (
-                  <button
-                    key={folder.id}
-                    type="button"
-                    onClick={() => setActiveFolderId(folder.id)}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      if (!folder.system) {
-                        setContextMenuFolder({ id: folder.id, name: folder.name, x: e.clientX, y: e.clientY })
-                      }
-                    }}
-                    className={`flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition ${
-                      isActive
-                        ? 'bg-white text-zinc-950 shadow-[0_14px_40px_rgba(255,255,255,0.08)]'
-                        : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
-                    }`}
-                  >
-                    <span className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
-                      <Icon className="size-4 shrink-0" />
-                      <span className="font-medium truncate text-sm">{folder.name}</span>
-                    </span>
-                    <span className="text-xs text-zinc-500">{folder.count}</span>
-                  </button>
-                )
-              })}
-            </div>
-            
-            {/* 智能标签区域 */}
-            {allTags.length > 0 && (
-              <div className="mt-6 flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-zinc-500">
-                  按标签筛选
-                </div>
-                <select
-                  value={selectedTag || ''}
-                  onChange={(e) => setSelectedTag(e.target.value || null)}
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-200 focus:border-white/20 focus:outline-none focus:ring-0"
+              <div className="heading-actions">
+                <Button
+                  variant="ghost"
+                  disabled={isPreviewMode}
+                  onClick={() => {
+                    setShowAiClassify(true)
+                  }}
                 >
-                  <option value="" className="text-zinc-900">全部标签</option>
-                  {allTags.map((tag) => (
-                    <option key={tag.name} value={tag.name} className="text-zinc-900">
-                      {tag.name} ({tag.count})
+                  <Sparkles size={16} />
+                  AI 智能分类
+                </Button>
+                <Button onClick={() => setShowImport(true)} disabled={isScanning || isPreviewMode}>
+                  {isScanning ? <LoaderCircle size={16} className="animate-spin" /> : <Plus size={18} />}
+                  导入视频
+                </Button>
+              </div>
+            </div>
+            {isPreviewMode && (
+              <div className="preview-notice">
+                <Eye size={15} />
+                <span>正在展示示例视频。打开桌面应用即可导入和管理本地视频。</span>
+              </div>
+            )}
+            {activeSeries && (
+              <div className="series-breadcrumb">
+                <button onClick={() => setActiveSeriesId(null)}>返回视频列表</button>
+                <Layers size={15} />
+                <strong>{activeSeries.name}</strong>
+                <button onClick={() => setShowSeries(true)}>管理系列</button>
+              </div>
+            )}
+            <div className="library-toolbar">
+              <div className="library-search">
+                <Search size={17} />
+                <Input
+                  ref={searchRef}
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  aria-label="搜索视频"
+                  placeholder="搜索名称、标题或路径…"
+                />
+                {keyword ? (
+                  <button
+                    className="icon-button"
+                    aria-label="清除搜索"
+                    onClick={() => {
+                      setKeyword('')
+                      searchRef.current?.focus()
+                    }}
+                  >
+                    <X size={15} />
+                  </button>
+                ) : (
+                  <kbd>Ctrl K</kbd>
+                )}
+              </div>
+              <div className="toolbar-controls">
+                <button
+                  className={`toolbar-button ${showFilter || activeFilterCount ? 'is-active' : ''}`}
+                  onClick={() => setShowFilter((value) => !value)}
+                  aria-expanded={showFilter}
+                  aria-controls="library-filter-panel"
+                >
+                  <SlidersHorizontal size={16} />
+                  筛选{activeFilterCount > 0 && <span className="filter-count">{activeFilterCount}</span>}
+                </button>
+                <select
+                  className="sort-select"
+                  aria-label="排序方式"
+                  value={`${sortField}-${sortOrder}`}
+                  onChange={(event) => {
+                    const [field, order] = event.target.value.split('-')
+                    setSortField(field as 'time' | 'name' | 'size')
+                    setSortOrder(order as 'asc' | 'desc')
+                  }}
+                >
+                  <option value="time-desc">最近修改</option>
+                  <option value="time-asc">最早修改</option>
+                  <option value="name-asc">名称 A–Z</option>
+                  <option value="name-desc">名称 Z–A</option>
+                  <option value="size-desc">文件从大到小</option>
+                  <option value="size-asc">文件从小到大</option>
+                </select>
+                {seriesState.groups.length > 0 && (
+                  <button
+                    className={`toolbar-button ${collapseSeries ? 'is-active' : ''}`}
+                    aria-label="按系列折叠"
+                    aria-pressed={collapseSeries}
+                    onClick={() => {
+                      setActiveSeriesId(null)
+                      setCollapseSeries((value) => !value)
+                    }}
+                  >
+                    <Layers size={15} />
+                    系列
+                  </button>
+                )}
+                <div className="view-switch" role="group" aria-label="显示方式">
+                  <button
+                    className={view === 'grid' ? 'active' : ''}
+                    aria-label="网格视图"
+                    aria-pressed={view === 'grid'}
+                    onClick={() => setView('grid')}
+                    title="网格视图"
+                  >
+                    <LayoutGrid size={17} />
+                  </button>
+                  <button
+                    className={view === 'list' ? 'active' : ''}
+                    aria-label="列表视图"
+                    aria-pressed={view === 'list'}
+                    onClick={() => setView('list')}
+                    title="列表视图"
+                  >
+                    <List size={19} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            {showFilter && (
+              <div id="library-filter-panel">
+                <LibraryFilters
+                  value={libraryFilter}
+                  onChange={setLibraryFilter}
+                  tags={allTags}
+                  selectedTag={selectedTag}
+                  onTagChange={setSelectedTag}
+                  onReset={resetFilters}
+                />
+              </div>
+            )}
+            {(keyword || activeFilterCount > 0) && (
+              <div className="active-filters">
+                <span>当前条件</span>
+                {keyword && (
+                  <button onClick={() => setKeyword('')}>
+                    搜索：{keyword}
+                    <X size={12} />
+                  </button>
+                )}
+                {selectedTag && (
+                  <button onClick={() => setSelectedTag(null)}>
+                    标签：{selectedTag}
+                    <X size={12} />
+                  </button>
+                )}
+                {Object.entries(libraryFilter)
+                  .filter(([, value]) => value !== '')
+                  .map(([key, value]) => (
+                    <button
+                      key={key}
+                      onClick={() => setLibraryFilter((previous) => ({ ...previous, [key]: '' }))}
+                    >
+                      {key === 'format'
+                        ? value.toUpperCase()
+                        : key === 'minSize'
+                          ? `≥ ${value} MB`
+                          : key === 'maxSize'
+                            ? `≤ ${value} MB`
+                            : {
+                                short: '5 分钟以内',
+                                medium: '5–30 分钟',
+                                long: '30 分钟及以上',
+                                unknown: '待解析时长',
+                              }[value] || value}
+                      <X size={12} />
+                    </button>
+                  ))}
+                <button className="clear-all" onClick={resetSearch}>
+                  清除全部
+                </button>
+              </div>
+            )}
+            <div className="results-heading">
+              <span>
+                {keyword || activeFilterCount
+                  ? `找到 ${filteredVideos.length.toLocaleString()} 个视频`
+                  : `共 ${filteredVideos.length.toLocaleString()} 个视频`}
+                <span className="results-size">
+                  {formatBytes(filteredVideos.reduce((sum, video) => sum + video.fileSize, 0))}
+                </span>
+              </span>
+              <div>
+                <button
+                  className={`text-button ${selectionMode ? 'is-active' : ''}`}
+                  aria-pressed={selectionMode}
+                  onClick={() => {
+                    setSelectionMode((value) => !value)
+                    setSelectedVideoIds(new Set())
+                  }}
+                >
+                  <CheckSquare size={15} />
+                  {selectionMode ? '退出批量选择' : '批量选择'}
+                </button>
+                <button
+                  className="icon-button"
+                  disabled={isPreviewMode || isScanning || !snapshot.lastScanDirectory}
+                  onClick={() => void handleRescan()}
+                  aria-label="增量扫描"
+                  title="增量扫描上次目录"
+                >
+                  <RefreshCw size={15} className={isScanning ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            </div>
+            {(selectionMode || selectedVideoIds.size > 0) && (
+              <div className="batch-toolbar" aria-label="批量操作">
+                <label>
+                  <input
+                    type="checkbox"
+                    aria-label="全选当前筛选结果"
+                    checked={sortedVideos.length > 0 && selectedVideoIds.size === sortedVideos.length}
+                    ref={(element) => {
+                      if (element)
+                        element.indeterminate =
+                          selectedVideoIds.size > 0 && selectedVideoIds.size < sortedVideos.length
+                    }}
+                    onChange={handleSelectAll}
+                  />
+                  <span>
+                    已选 {selectedVideoIds.size} / {sortedVideos.length}
+                  </span>
+                </label>
+                <select
+                  aria-label="批量分类目标"
+                  value={batchFolderId}
+                  onChange={(event) => setBatchFolderId(event.target.value)}
+                >
+                  <option value="">选择分类</option>
+                  {snapshot.folders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {folder.name}
                     </option>
                   ))}
                 </select>
-                {selectedTag && (
-                  <button
-                    onClick={() => setSelectedTag(null)}
-                    className="rounded-full bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 transition"
-                  >
-                    清除标签筛选
-                  </button>
+                <Button
+                  size="sm"
+                  disabled={!batchFolderId || !selectedVideoIds.size || isMutatingFolder || isPreviewMode}
+                  onClick={() => void handleBatchClassify('add')}
+                >
+                  加入分类
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!batchFolderId || !selectedVideoIds.size || isMutatingFolder || isPreviewMode}
+                  onClick={() => void handleBatchClassify('remove')}
+                >
+                  移出分类
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={selectedVideoIds.size < 2 || isPreviewMode}
+                  onClick={() => setShowSeries(true)}
+                >
+                  <Layers size={14} />
+                  组成系列
+                </Button>
+                <Button
+                  className="batch-remove"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!selectedVideoIds.size || isDeleting || isPreviewMode}
+                  onClick={() => void handleDeleteSelected()}
+                >
+                  <Trash2 size={14} />
+                  移除记录
+                </Button>
+                <button
+                  className="icon-button"
+                  aria-label="取消选择"
+                  title="取消选择 (Esc)"
+                  onClick={() => {
+                    setSelectionMode(false)
+                    setSelectedVideoIds(new Set())
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+            {isScanning && (
+              <div className="scan-feedback" role="status">
+                <LoaderCircle size={17} className="animate-spin" />
+                <div>
+                  <strong>{scanProgress?.message || '正在扫描目录…'}</strong>
+                  <p>
+                    {scanProgress?.total
+                      ? `${scanProgress.current || 0} / ${scanProgress.total}`
+                      : `已找到 ${scannedFiles.length} 个文件`}
+                    {scannedFiles.length > 0
+                      ? `　${scannedFiles[scannedFiles.length - 1].split(/[\\/]/).pop()}`
+                      : ''}
+                  </p>
+                </div>
+              </div>
+            )}
+            {showAiNotification && aiPreview && (
+              <div className="ai-result">
+                <Sparkles size={17} />
+                <span>AI 分类完成，生成 {aiPreview.folders.length} 个分类</span>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setShowAiNotification(false)
+                    setShowAiClassify(true)
+                  }}
+                >
+                  查看分类方案
+                </Button>
+                <button
+                  className="icon-button"
+                  aria-label="关闭分类提示"
+                  onClick={() => setShowAiNotification(false)}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+            <div
+              className={`video-collection ${view === 'list' ? 'list-view' : ''}`}
+              aria-label="视频列表"
+              aria-busy={keyword !== deferredKeyword}
+            >
+              {paginatedEntries.map((entry, index) => {
+                if (entry.kind === 'series')
+                  return (
+                    <SeriesCard
+                      key={`series-${entry.group.id}`}
+                      group={entry.group}
+                      members={entry.members}
+                      onOpen={() => setActiveSeriesId(entry.group.id)}
+                      view={view}
+                      previewMode={isPreviewMode}
+                    />
+                  )
+                const video = entry.video
+                return (
+                  <VideoCard
+                    key={video.id}
+                    video={video}
+                    index={index}
+                    isSelected={selectedVideoIds.has(video.id)}
+                    onSelect={() => handleToggleSelect(video.id)}
+                    onOpen={() => handleOpenVideo(video)}
+                    folders={snapshot.folders}
+                    onToggleFolder={(folderId) => void handleToggleFolder(video.id, folderId)}
+                    isMutatingFolder={isMutatingFolder}
+                    pendingVideoId={pendingVideoId}
+                    isPreviewMode={isPreviewMode}
+                    onScrape={handleScrapeVideo}
+                    canScrape={!isPreviewMode && tmdbApiKey.length > 0}
+                    selectionMode={selectionMode}
+                    view={view}
+                    previewEnabled={previewEnabled}
+                  />
+                )
+              })}
+            </div>
+            {filteredVideos.length === 0 && (
+              <div className="empty-library">
+                <span className="empty-library-icon">
+                  {snapshot.videos.length ? <Search size={30} /> : <Clapperboard size={32} />}
+                </span>
+                <h2>{snapshot.videos.length === 0 ? '你的影像库，从这里开始' : '没有找到匹配的视频'}</h2>
+                <p>
+                  {snapshot.videos.length === 0
+                    ? '导入一个视频目录，让零散的影像有序归档。'
+                    : keyword || activeFilterCount
+                      ? '试试减少筛选条件，或换个关键词。'
+                      : '这个分类还没有视频。可以从全部视频中批量加入。'}
+                </p>
+                {snapshot.videos.length === 0 ? (
+                  <Button disabled={isPreviewMode || isScanning} onClick={() => setShowImport(true)}>
+                    <Plus size={16} />
+                    导入视频目录
+                  </Button>
+                ) : keyword || activeFilterCount ? (
+                  <Button variant="secondary" onClick={resetSearch}>
+                    清除搜索和筛选
+                  </Button>
+                ) : (
+                  <Button variant="secondary" onClick={() => setActiveFolderId('all')}>
+                    浏览全部视频
+                  </Button>
                 )}
               </div>
             )}
-
-            <div className="mt-auto space-y-4 px-2 pb-2 pt-6">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                  <FolderPlus className="size-4" />
-                  新建虚拟文件夹
-                </div>
-                <div className="space-y-3">
-                  <Input
-                    value={newFolderName}
-                    onChange={(event) => setNewFolderName(event.target.value)}
-                    placeholder="例如：课程素材"
-                    className="rounded-2xl border-white/8 bg-white/[0.03]"
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => void handleCreateFolder()}
-                    disabled={isCreatingFolder || isPreviewMode}
-                    className="h-11 w-full rounded-2xl"
-                  >
-                    {isCreatingFolder ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Folder className="mr-2 size-4" />}
-                    创建文件夹
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-zinc-900 px-4 py-4 text-xs text-zinc-500">
-                <div className="flex items-center gap-2 text-zinc-300">
-                  <FolderOpen className="size-3.5" />
-                  最近扫描目录
-                </div>
-                <div className="mt-2 truncate">{snapshot.lastScanDirectory ?? '尚未选择扫描目录'}</div>
-                <div className="mt-2 text-zinc-600">上次扫描：{formatTimeLabel(snapshot.lastScannedAt)}</div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void handleCleanupUnsupported()}
-                  disabled={isCleaningUp || isPreviewMode}
-                  className="mt-3 w-full text-xs"
-                >
-                  {isCleaningUp ? <LoaderCircle className="mr-2 size-3 animate-spin" /> : null}
-                  清理旧格式记录
-                </Button>
-              </div>
-
-              {/* 数据库选择 */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                  <Database className="size-4" />
-                  数据库
-                </div>
-                <div className="mt-2 truncate text-xs text-zinc-500">
-                  {currentDbPath ? `当前: ${currentDbPath.split(/[\\/]/).pop()}` : '加载中...'}
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    void handleScanDatabases()
-                    setShowDbSelector(true)
-                  }}
-                  disabled={isPreviewMode}
-                  className="mt-2 w-full text-xs"
-                >
-                  选择数据库
-                </Button>
-              </div>
-            </div>
-          </aside>
-
-          <main className="rounded-[36px] border border-white/6 bg-white/[0.03] p-5 backdrop-blur-2xl">
-            <div className="flex flex-col gap-5 border-b border-white/6 px-2 pb-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <div className="text-sm text-zinc-500">当前视图</div>
-                  <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">{activeFolder.name}</h1>
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-400">
-                    {filteredVideos.length} 个视频 · {selectedVideoIds.size > 0 && `已选 ${selectedVideoIds.size}`}
-                  </div>
-                  {filteredVideos.length > 0 && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={handleSelectAll}
-                      className="h-10 rounded-lg px-4"
-                    >
-                      {selectedVideoIds.size === filteredVideos.length ? '取消全选' : '全选'}
-                    </Button>
-                  )}
-                  {selectedVideoIds.size > 0 && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void handleDeleteSelected()}
-                      disabled={isDeleting || isPreviewMode}
-                      className="h-10 rounded-lg px-4 bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300"
-                    >
-                      {isDeleting ? (
-                        <LoaderCircle className="mr-2 size-4 animate-spin" />
-                      ) : null}
-                      删除选中 ({selectedVideoIds.size})
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    onClick={() => setShowFilter(!showFilter)}
-                    variant={showFilter ? "default" : "secondary"}
-                    className="h-10 rounded-lg px-4"
-                  >
-                    筛选器
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <select
-                        value={sortField}
-                        onChange={(e) => setSortField(e.target.value as 'name' | 'size' | 'time')}
-                        className="h-10 rounded-lg border border-zinc-700 bg-zinc-800 px-4 pr-8 text-sm text-zinc-200 appearance-none cursor-pointer focus:outline-none focus:border-zinc-600"
-                      >
-                        <option value="time" className="bg-zinc-900">按时间</option>
-                        <option value="name" className="bg-zinc-900">按名称</option>
-                        <option value="size" className="bg-zinc-900">按大小</option>
-                      </select>
-                      <ArrowUpDown className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500 pointer-events-none" />
-                    </div>
-                    <button
-                      onClick={() => setSortOrder((o) => o === 'asc' ? 'desc' : 'asc')}
-                      className="h-10 w-10 rounded-lg border border-zinc-700 bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white hover:border-zinc-600 transition"
-                      title={sortOrder === 'asc' ? '升序' : '降序'}
-                    >
-                      {sortOrder === 'asc' ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                    </button>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={() => void handleScanDirectory()}
-                    disabled={isScanning || isPreviewMode}
-                    className="h-10 rounded-lg px-4"
-                  >
-                    {isScanning ? (
-                      <LoaderCircle className="mr-2 size-4 animate-spin" />
-                    ) : (
-                      <ScanSearch className="mr-2 size-4" />
-                    )}
-                    扫描目录
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => setShowTmdbConfig(true)}
-                    variant="ghost"
-                    className="size-10 rounded-lg p-0"
-                    disabled={isPreviewMode}
-                    title="TMDB 配置"
-                  >
-                    <Settings className="size-5" />
-                  </Button>
-                  <PlayerSelector current={defaultPlayer} onSelect={(p) => setDefaultPlayer(p)} />
-                  <Button
-                    type="button"
-                    onClick={() => { setShowMpvConfig(true); void loadMpvConfig() }}
-                    variant="ghost"
-                    className="size-10 rounded-lg p-0"
-                    disabled={isPreviewMode}
-                    title="播放器设置 (mpv)"
-                  >
-                    <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => { setShowAiClassify(true); void loadAiConfig() }}
-                    variant="ghost"
-                    className="size-10 rounded-lg p-0"
-                    disabled={isPreviewMode}
-                    title="AI 智能分类"
-                  >
-                    <Sparkles className="size-5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => void handleCheckUpdate()}
-                    variant="ghost"
-                    className="size-10 rounded-lg p-0"
-                    disabled={isPreviewMode}
-                    title="检查更新"
-                  >
-                    <Download className="size-5" />
-                  </Button>
-                </div>
-              </div>
-
-              {showFilter && (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-4">
-                  <div className="mb-4 text-sm font-medium text-white">扫描筛选器</div>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <div>
-                      <label className="mb-2 block text-xs text-zinc-400">最小文件大小 (MB)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={filterMinSize}
-                        onChange={(e) => setFilterMinSize(Number(e.target.value))}
-                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-white/20 focus:outline-none"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs text-zinc-400">最大文件大小 (MB，0表示不限制)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={filterMaxSize}
-                        onChange={(e) => setFilterMaxSize(Number(e.target.value))}
-                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-white/20 focus:outline-none"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs text-zinc-400">文件格式</label>
-                      <div className="flex flex-wrap gap-2">
-                        {['.mp4', '.mkv', '.avi', '.mov', '.wmv'].map((format) => (
-                          <button
-                            key={format}
-                            type="button"
-                            onClick={() => {
-                              setFilterFormats((prev) =>
-                                prev.includes(format)
-                                  ? prev.filter((f) => f !== format)
-                                  : [...prev, format]
-                              )
-                            }}
-                            className={`rounded-full px-3 py-1 text-xs transition ${
-                              filterFormats.includes(format)
-                                ? 'bg-white text-zinc-950'
-                                : 'bg-white/10 text-zinc-400 hover:bg-white/20'
-                            }`}
-                          >
-                            {format}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex items-center gap-4 text-xs text-zinc-500">
-                    <span>当前设置：</span>
-                    <span>大小: {filterMinSize > 0 ? `${filterMinSize}MB` : '不限'} ~ {filterMaxSize > 0 ? `${filterMaxSize}MB` : '不限'}</span>
-                    <span>格式: {filterFormats.join(', ')}</span>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3 text-sm text-zinc-400">
-                  {isScanning && scanProgress ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <LoaderCircle className="size-4 animate-spin" />
-                        <span>{scanProgress.message}</span>
-                        {scanProgress.total && (
-                          <span className="text-zinc-500">({scanProgress.current || 0}/{scanProgress.total})</span>
-                        )}
-                      </div>
-                      {scannedFiles.length > 0 && (
-                        <div className="mt-2 max-h-40 overflow-y-auto rounded-xl bg-black/30 p-3">
-                          <div className="mb-2 text-xs text-zinc-500">已找到 {scannedFiles.length} 个视频文件：</div>
-                          <div className="space-y-1">
-                            {scannedFiles.slice(-10).map((file, idx) => (
-                              <div key={idx} className="truncate text-xs text-zinc-300">
-                                {file.split('\\').pop() || file.split('/').pop()}
-                              </div>
-                            ))}
-                            {scannedFiles.length > 10 && (
-                              <div className="text-xs text-zinc-500">...还有 {scannedFiles.length - 10} 个文件</div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : showAiNotification && aiPreview ? (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-violet-300">
-                        AI 分类完成，共 {aiPreview.folders.length} 个文件夹
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => void handleAiApplyDirect()}
-                          className="rounded-full bg-violet-600 px-4 py-1 text-xs text-white hover:bg-violet-500 transition"
-                        >
-                          应用分类
-                        </button>
-                        <button
-                          onClick={() => { setShowAiNotification(false); setStatusText('') }}
-                          className="rounded-full border border-white/10 px-4 py-1 text-xs text-zinc-400 hover:text-white transition"
-                        >
-                          关闭
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    statusText
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 pt-6 md:grid-cols-2 2xl:grid-cols-3">
-              {paginatedVideos.map((video, index) => (
-                <VideoCard
-                  key={video.id}
-                  video={video}
-                  index={index}
-                  isSelected={selectedVideoIds.has(video.id)}
-                  onSelect={() => handleToggleSelect(video.id)}
-                  onOpen={() => handleOpenVideo(video)}
-                  folders={snapshot.folders}
-                  onToggleFolder={(folderId: number) => void handleToggleFolder(video.id, folderId)}
-                  isMutatingFolder={isMutatingFolder}
-                  pendingVideoId={pendingVideoId}
-                  isPreviewMode={isPreviewMode}
-                  onScrape={handleScrapeVideo}
-                  canScrape={!isPreviewMode && tmdbApiKey.length > 0}
-                />
-              ))}
-            </div>
-
-            {filteredVideos.length > 0 && totalPages > 1 && (
-              <div className="mt-6 flex items-center justify-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="rounded-lg px-3"
-                >
-                  首页
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="rounded-lg px-3"
-                >
-                  上一页
-                </Button>
-                <div className="flex items-center gap-1 px-3">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum: number
-                    if (totalPages <= 5) {
-                      pageNum = i + 1
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i
-                    } else {
-                      pageNum = currentPage - 2 + i
-                    }
-                    return (
-                      <button
-                        key={pageNum}
-                        type="button"
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`size-8 rounded-lg text-sm transition ${
-                          currentPage === pageNum
-                            ? 'bg-violet-500 text-white'
-                            : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    )
-                  })}
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="rounded-lg px-3"
-                >
-                  下一页
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="rounded-lg px-3"
-                >
-                  末页
-                </Button>
-                <span className="ml-2 text-sm text-zinc-500">
-                  {currentPage}/{totalPages} 页
+            {filteredVideos.length > 0 && (
+              <footer className="library-pagination">
+                <span>
+                  显示 {(currentPage - 1) * pageSize + 1}–
+                  {Math.min(currentPage * pageSize, displayEntries.length)}，共{' '}
+                  {displayEntries.length.toLocaleString()} 项
+                  {displayEntries.length !== filteredVideos.length
+                    ? `（${filteredVideos.length} 个视频）`
+                    : ''}
                 </span>
-              </div>
+                <div>
+                  <select
+                    aria-label="每页数量"
+                    value={pageSize}
+                    onChange={(event) => setPageSize(Number(event.target.value))}
+                  >
+                    {[12, 24, 48].map((value) => (
+                      <option key={value} value={value}>
+                        {value} / 页
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="pagination-button"
+                    disabled={currentPage <= 1}
+                    aria-label="上一页"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  >
+                    <ChevronDown size={16} className="rotate-90" />
+                  </button>
+                  <label className="page-jump">
+                    <input
+                      key={`${currentPage}-${pageSize}`}
+                      type="number"
+                      min={1}
+                      max={Math.max(1, totalPages)}
+                      defaultValue={currentPage}
+                      aria-label="跳转页码"
+                      title="输入页码，按 Enter 或移开焦点跳转"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          event.currentTarget.blur()
+                        }
+                      }}
+                      onBlur={(event) => {
+                        const page = Math.min(
+                          Math.max(1, totalPages),
+                          Math.max(1, Math.trunc(Number(event.currentTarget.value)) || 1)
+                        )
+                        event.currentTarget.value = String(page)
+                        setCurrentPage(page)
+                      }}
+                    />
+                    <span>/ {Math.max(1, totalPages)}</span>
+                  </label>
+                  <button
+                    className="pagination-button"
+                    disabled={currentPage >= totalPages}
+                    aria-label="下一页"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  >
+                    <ChevronDown size={16} className="-rotate-90" />
+                  </button>
+                </div>
+              </footer>
             )}
-
-            {filteredVideos.length === 0 && (
-              <div className="mt-6 flex h-[340px] flex-col items-center justify-center rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 px-6 text-center">
-                <div className="flex size-14 items-center justify-center rounded-xl bg-zinc-800 text-zinc-300">
-                  <Film className="size-6" />
-                </div>
-                <div className="mt-5 text-lg font-medium text-white">
-                  {snapshot.videos.length === 0 ? '资源库还是空的' : '没有找到匹配的视频'}
-                </div>
-                <div className="mt-2 max-w-md text-sm leading-6 text-zinc-500">
-                  {snapshot.videos.length === 0
-                    ? '先扫描一个本地目录，系统会把视频绝对路径写入 SQLite，再通过虚拟文件夹完成归类。'
-                    : '试试更换搜索关键词，或者切换到其他虚拟文件夹视图。'}
-                </div>
-                <Button
-                  type="button"
-                  onClick={() => void handleScanDirectory()}
-                  disabled={isScanning || isPreviewMode}
-                  className="mt-6 rounded-lg px-5"
-                >
-                  {isScanning ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <ScanSearch className="mr-2 size-4" />}
-                  扫描目录
-                </Button>
-              </div>
-            )}
-
-            {/* 刮削进度 */}
             {isScraping && (
-              <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/80 p-4">
-                <div className="flex items-center gap-2 text-sm text-zinc-300">
-                  <LoaderCircle className="size-4 animate-spin text-emerald-400" />
-                  <span>正在刮削...</span>
-                </div>
-                <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 animate-pulse transition-all duration-300"
-                    style={{ width: '30%' }}
-                  />
-                </div>
+              <div className="scan-feedback" role="status">
+                <LoaderCircle size={17} className="animate-spin" />
+                正在匹配影视信息…
               </div>
             )}
           </main>
+          <footer className="workspace-status">
+            <span aria-live="polite" aria-atomic="true" title={statusText}>
+              <span className="connection-dot" />
+              {statusText}
+            </span>
+            <span title={`上次扫描：${formatTimeLabel(snapshot.lastScannedAt)}`}>
+              {isPreviewMode ? '浏览器预览' : '本地存储'}
+              <span className="status-shortcut">Ctrl K 搜索</span>
+            </span>
+          </footer>
         </div>
       </div>
 
+      {showSeries && seriesState.databasePath === snapshot.databaseMeta.databasePath && (
+        <SeriesPanel
+          videos={snapshot.videos}
+          state={seriesState}
+          selectedIds={[...selectedVideoIds]}
+          onState={(value) => {
+            setSeriesState(value)
+            setCollapseSeries(true)
+            setSelectedVideoIds(new Set())
+            setSelectionMode(false)
+          }}
+          onOpenGroup={(id) => {
+            setActiveFolderId('all')
+            setActiveSeriesId(id)
+            setShowSeries(false)
+          }}
+          onClose={() => setShowSeries(false)}
+        />
+      )}
+      {removeIds && (
+        <Dialog
+          title="移除视频记录"
+          description={`将从视频库移除选中的 ${removeIds.length} 条记录和分类关联。原视频文件会保留。`}
+          busy={isDeleting}
+          onClose={() => setRemoveIds(null)}
+        >
+          <p className="field-help">这会移除库中的影视信息；需要时可以重新扫描导入。</p>
+          {removeError && (
+            <p className="field-error" role="alert">
+              {removeError}
+            </p>
+          )}
+          <div className="dialog-actions">
+            <Button variant="ghost" disabled={isDeleting} onClick={() => setRemoveIds(null)}>
+              取消
+            </Button>
+            <Button
+              className="danger-button"
+              disabled={isDeleting}
+              onClick={() => void confirmRemoveSelected()}
+            >
+              {isDeleting ? <LoaderCircle size={15} className="animate-spin" /> : <Trash2 size={15} />}
+              确认移除记录
+            </Button>
+          </div>
+        </Dialog>
+      )}
+      {showCreateFolder && (
+        <Dialog
+          title="新建分类"
+          description="创建虚拟分类，同一视频可以加入多个分类。"
+          onClose={() => setShowCreateFolder(false)}
+          busy={isCreatingFolder}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleCreateFolder()
+            }}
+          >
+            <label className="dialog-field">
+              分类名称
+              <Input
+                value={newFolderName}
+                onChange={(event) => setNewFolderName(event.target.value)}
+                placeholder="例如：旅行记录、学习课程"
+                aria-label="分类名称"
+                maxLength={100}
+              />
+            </label>
+            {newFolderError && (
+              <p className="field-error" role="alert">
+                {newFolderError}
+              </p>
+            )}
+            <div className="dialog-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={isCreatingFolder}
+                onClick={() => setShowCreateFolder(false)}
+              >
+                取消
+              </Button>
+              <Button type="submit" disabled={!newFolderName.trim() || isCreatingFolder}>
+                {isCreatingFolder && <LoaderCircle size={15} className="animate-spin" />}创建分类
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      )}
+      {showImport && (
+        <Dialog
+          title="导入本地视频"
+          description="选择目录后自动扫描并加入视频库，已导入的文件会自动跳过。"
+          wide
+          onClose={() => setShowImport(false)}
+        >
+          <div className="import-explainer">
+            <FolderOpen size={28} />
+            <div>
+              <strong>选择一个视频目录</strong>
+              <p>支持子目录扫描，保留文件原来的位置。</p>
+            </div>
+          </div>
+          <details className="import-options">
+            <summary>
+              导入条件<span>可选</span>
+            </summary>
+            <div className="import-size-fields">
+              <label>
+                最小文件大小（MB）
+                <input
+                  type="number"
+                  min="0"
+                  aria-label="导入最小大小MB"
+                  value={filterMinSize}
+                  onChange={(event) => setFilterMinSize(Number(event.target.value))}
+                />
+              </label>
+              <label>
+                最大文件大小（MB）
+                <input
+                  type="number"
+                  min="0"
+                  aria-label="导入最大大小MB"
+                  value={filterMaxSize}
+                  onChange={(event) => setFilterMaxSize(Number(event.target.value))}
+                />
+              </label>
+            </div>
+            <p className="field-help">0 表示不限制。这些条件只影响导入，不会改变视频库里的记录。</p>
+            <fieldset>
+              <legend>文件格式</legend>
+              <div className="format-options">
+                {[
+                  '.mp4',
+                  '.mkv',
+                  '.avi',
+                  '.mov',
+                  '.wmv',
+                  '.webm',
+                  '.m4v',
+                  '.flv',
+                  '.ts',
+                  '.mts',
+                  '.m2ts',
+                  '.mpeg',
+                  '.mpg',
+                ].map((format) => (
+                  <label key={format}>
+                    <input
+                      type="checkbox"
+                      checked={filterFormats.includes(format)}
+                      onChange={() =>
+                        setFilterFormats((previous) =>
+                          previous.includes(format)
+                            ? previous.filter((item) => item !== format)
+                            : [...previous, format]
+                        )
+                      }
+                    />
+                    {format.slice(1).toUpperCase()}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </details>
+          {((filterMaxSize > 0 && filterMaxSize < filterMinSize) || filterFormats.length === 0) && (
+            <p className="field-error" role="alert">
+              {filterFormats.length === 0 ? '请至少选择一种视频格式。' : '最大大小不能小于最小大小。'}
+            </p>
+          )}
+          <div className="dialog-actions">
+            <Button variant="ghost" onClick={() => setShowImport(false)}>
+              取消
+            </Button>
+            <Button
+              disabled={
+                filterFormats.length === 0 ||
+                (filterMaxSize > 0 && filterMaxSize < filterMinSize) ||
+                filterMinSize < 0 ||
+                filterMaxSize < 0
+              }
+              onClick={() => {
+                setShowImport(false)
+                void handleScanDirectory()
+              }}
+            >
+              <FolderOpen size={16} />
+              选择目录并扫描
+            </Button>
+          </div>
+        </Dialog>
+      )}
+      {showSettings && (
+        <Dialog
+          title="设置与偏好"
+          description="管理播放方式、影视信息和本地资源库。"
+          onClose={() => setShowSettings(false)}
+          wide
+        >
+          <div className="local-cache-note">
+            <strong>本地封面与预览缓存</strong>
+            <p>
+              {mediaStats
+                ? `${mediaStats.thumbnails} 张封面、${mediaStats.previews} 段预览，占用 ${formatBytes(mediaStats.bytes)} / ${formatBytes(mediaStats.limitBytes)}`
+                : '保存在本机，重启后继续复用。'}
+            </p>
+            <p>首次浏览会读取原片生成缓存，后续直接加载小文件。封面使用本地视频画面。</p>
+          </div>
+          <div className="settings-group">
+            <h3>播放与预览</h3>
+            <div className="settings-row">
+              <div>
+                <strong>默认播放器</strong>
+                <p>点击视频时使用的播放方式</p>
+              </div>
+              <PlayerSelector current={defaultPlayer} onSelect={handlePlayerConfigChange} />
+            </div>
+            <div className="settings-row">
+              <div>
+                <strong>悬停预览</strong>
+                <p>每段随机播放 3–5 秒，自动切换到其他位置</p>
+              </div>
+              <button
+                className={`preference-switch ${previewEnabled ? 'enabled' : ''}`}
+                role="switch"
+                aria-checked={previewEnabled}
+                aria-label="悬停预览"
+                onClick={() => setPreviewEnabled((value) => !value)}
+              >
+                <span />
+              </button>
+            </div>
+            <button
+              className="settings-link"
+              disabled={isPreviewMode}
+              onClick={() =>
+                openSetting(() => {
+                  setShowMpvConfig(true)
+                  void loadMpvConfig()
+                })
+              }
+            >
+              <Play size={17} />
+              <span>MPV 画质与增强设置</span>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+          <div className="settings-group">
+            <h3>信息与智能整理</h3>
+            <button
+              className="settings-link"
+              disabled={isPreviewMode}
+              onClick={() => openSetting(() => setShowTmdbConfig(true))}
+            >
+              <FilmIcon size={17} />
+              <span>TMDB 影视信息配置</span>
+              <ChevronRight size={15} />
+            </button>
+            <button
+              className="settings-link"
+              disabled={isPreviewMode}
+              onClick={() =>
+                openSetting(() => {
+                  setShowAiClassify(true)
+                })
+              }
+            >
+              <Sparkles size={17} />
+              <span>AI 分类与模型配置</span>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+          <div className="settings-group">
+            <h3>资源库与应用</h3>
+            <button
+              className="settings-link"
+              disabled={isPreviewMode}
+              onClick={() =>
+                openSetting(() => {
+                  void handleScanDatabases()
+                  setShowDbSelector(true)
+                })
+              }
+            >
+              <Database size={17} />
+              <span>
+                选择数据库<small>{currentDbPath?.split(/[\\/]/).pop() || '本地 SQLite 数据库'}</small>
+              </span>
+              <ChevronRight size={15} />
+            </button>
+            <button
+              className="settings-link"
+              disabled={isPreviewMode}
+              onClick={() => openSetting(() => void handleCheckUpdate())}
+            >
+              <Download size={17} />
+              <span>检查更新</span>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+          <div className="shortcut-guide">
+            <span>
+              <kbd>Ctrl K</kbd>搜索视频
+            </span>
+            <span>
+              <kbd>Esc</kbd>退出选择 / 关闭弹窗
+            </span>
+            <span>
+              <kbd>Ctrl A</kbd>批量模式全选
+            </span>
+          </div>
+        </Dialog>
+      )}
+
       {/* TMDB 配置弹窗 */}
       {showTmdbConfig && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div
+          ref={legacyModalRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="TMDB 配置"
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+        >
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowTmdbConfig(false)}
           />
           <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl">
             <button
+              aria-label="关闭 TMDB 配置"
               onClick={() => setShowTmdbConfig(false)}
               className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
             >
@@ -1868,6 +2270,8 @@ function App() {
               <div>
                 <label className="mb-2 block text-sm text-zinc-400">API Key</label>
                 <Input
+                  type="password"
+                  aria-label="TMDB API Key"
                   value={tmdbApiKey}
                   onChange={(e) => setTmdbApiKey(e.target.value)}
                   placeholder="输入你的 TMDB API Key"
@@ -1875,10 +2279,13 @@ function App() {
                 />
                 <div className="mt-2 text-xs text-zinc-600">
                   前往{' '}
-                  <span className="text-zinc-400 underline cursor-pointer" onClick={() => window.open('https://www.themoviedb.org/settings/api', '_blank')}>
+                  <span
+                    className="text-zinc-400 underline cursor-pointer"
+                    onClick={() => window.open('https://www.themoviedb.org/settings/api', '_blank')}
+                  >
                     TMDB 设置页面
-                  </span>
-                  {' '}获取 API Key
+                  </span>{' '}
+                  获取 API Key
                 </div>
               </div>
               <Button
@@ -1895,7 +2302,14 @@ function App() {
 
       {/* 检查更新弹窗 */}
       {showUpdateDialog && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div
+          ref={legacyModalRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="检查更新"
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+        >
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowUpdateDialog(false)}
@@ -1925,9 +2339,7 @@ function App() {
             )}
 
             {updateStatus === 'not-available' && (
-              <div className="py-4 text-center text-sm text-zinc-400">
-                当前已是最新版本，无需更新
-              </div>
+              <div className="py-4 text-center text-sm text-zinc-400">当前已是最新版本，无需更新</div>
             )}
 
             {updateStatus === 'available' && (
@@ -1963,7 +2375,8 @@ function App() {
             {updateStatus === 'downloaded' && (
               <div className="space-y-4 py-2">
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-white">
-                  更新已下载完成，重启应用以安装 <span className="font-semibold text-emerald-400">v{updateVersion}</span>
+                  更新已下载完成，重启应用以安装{' '}
+                  <span className="font-semibold text-emerald-400">v{updateVersion}</span>
                 </div>
                 <Button
                   onClick={() => void handleInstallUpdate()}
@@ -1974,9 +2387,7 @@ function App() {
               </div>
             )}
 
-            {updateStatus === 'error' && (
-              <div className="py-4 text-sm text-red-400">{updateError}</div>
-            )}
+            {updateStatus === 'error' && <div className="py-4 text-sm text-red-400">{updateError}</div>}
 
             {updateStatus === 'idle' && (
               <Button
@@ -1992,13 +2403,21 @@ function App() {
 
       {/* MPV 播放器设置弹窗 */}
       {showMpvConfig && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div
+          ref={legacyModalRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="MPV 播放器设置"
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+        >
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowMpvConfig(false)}
           />
           <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl">
             <button
+              aria-label="关闭 MPV 设置"
               onClick={() => setShowMpvConfig(false)}
               className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
             >
@@ -2007,8 +2426,18 @@ function App() {
             <div className="mb-6 flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-lg bg-orange-500/20 text-orange-400">
                 <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               </div>
               <div>
@@ -2036,7 +2465,7 @@ function App() {
                         await handleSaveMpvConfig({ mpvPath: path })
                       }
                     }}
-                    variant="outline"
+                    variant="secondary"
                     className="rounded-xl border-white/10 text-xs text-zinc-300 hover:bg-white/10"
                   >
                     检查
@@ -2059,9 +2488,11 @@ function App() {
                     mpvConfigState.anime4k ? 'bg-orange-500' : 'bg-zinc-600'
                   }`}
                 >
-                  <span className={`inline-block size-4 translate-y-1 rounded-full bg-white transition ${
-                    mpvConfigState.anime4k ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
+                  <span
+                    className={`inline-block size-4 translate-y-1 rounded-full bg-white transition ${
+                      mpvConfigState.anime4k ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
                 </button>
               </div>
 
@@ -2077,9 +2508,11 @@ function App() {
                     mpvConfigState.interpolation ? 'bg-orange-500' : 'bg-zinc-600'
                   }`}
                 >
-                  <span className={`inline-block size-4 translate-y-1 rounded-full bg-white transition ${
-                    mpvConfigState.interpolation ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
+                  <span
+                    className={`inline-block size-4 translate-y-1 rounded-full bg-white transition ${
+                      mpvConfigState.interpolation ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
                 </button>
               </div>
 
@@ -2087,11 +2520,13 @@ function App() {
               <div>
                 <label className="mb-2 block text-sm text-zinc-400">超分 Shader</label>
                 <div className="flex gap-2">
-                  {([
-                    { value: 'anime4k', label: 'Anime4K' },
-                    { value: 'fsrcnnx', label: 'FSRCNNX' },
-                    { value: 'none', label: '无' },
-                  ] as const).map((shader) => (
+                  {(
+                    [
+                      { value: 'anime4k', label: 'Anime4K' },
+                      { value: 'fsrcnnx', label: 'FSRCNNX' },
+                      { value: 'none', label: '无' },
+                    ] as const
+                  ).map((shader) => (
                     <button
                       key={shader.value}
                       onClick={() => handleSaveMpvConfig({ superResShader: shader.value })}
@@ -2118,13 +2553,21 @@ function App() {
 
       {/* AI 智能分类弹窗 */}
       {showAiClassify && !showAiNotification && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div
+          ref={legacyModalRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="AI 智能分类"
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+        >
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowAiClassify(false)}
           />
           <div className="relative w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl max-h-[85vh] flex flex-col">
             <button
+              aria-label="关闭 AI 智能分类"
               onClick={() => setShowAiClassify(false)}
               className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
             >
@@ -2157,6 +2600,8 @@ function App() {
                 <div>
                   <label className="mb-1.5 block text-xs text-zinc-500">API Key</label>
                   <Input
+                    type="password"
+                    aria-label="AI API Key"
                     value={aiConfig.apiKey}
                     onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
                     placeholder="sk-or-v1-..."
@@ -2212,7 +2657,9 @@ function App() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-zinc-400">{aiProgressMessage}</span>
-                    <span className="text-zinc-500">{aiCurrentBatch}/{aiTotalBatches}</span>
+                    <span className="text-zinc-500">
+                      {aiCurrentBatch}/{aiTotalBatches}
+                    </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
                     <div
@@ -2230,7 +2677,11 @@ function App() {
                     onClick={() => setShowAiStreamDetail(!showAiStreamDetail)}
                     className="flex items-center gap-1.5 w-full px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition"
                   >
-                    {showAiStreamDetail ? <ChevronDown className="size-3" /> : <ChevronUp className="size-3" />}
+                    {showAiStreamDetail ? (
+                      <ChevronDown className="size-3" />
+                    ) : (
+                      <ChevronUp className="size-3" />
+                    )}
                     AI 推理详情
                     {aiClassifying && <LoaderCircle className="size-3 animate-spin text-violet-400 ml-1" />}
                   </button>
@@ -2241,7 +2692,9 @@ function App() {
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <span className="text-xs font-medium text-violet-400">推理过程</span>
                           </div>
-                          <div className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiReasoning}</div>
+                          <div className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">
+                            {aiReasoning}
+                          </div>
                         </div>
                       )}
                       {aiRawContent && (
@@ -2249,7 +2702,9 @@ function App() {
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <span className="text-xs font-medium text-emerald-400">原始输出</span>
                           </div>
-                          <div className="font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">{aiRawContent}</div>
+                          <div className="font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">
+                            {aiRawContent}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2259,18 +2714,22 @@ function App() {
 
               {/* 消息提示 */}
               {aiMessage && (
-                <div className={`text-xs p-3 rounded-lg ${
-                  aiMessage.includes('成功') || aiMessage.includes('完成') || aiMessage.includes('已应用')
-                    ? 'bg-emerald-500/10 text-emerald-400'
-                    : aiMessage.includes('遗漏')
-                    ? 'bg-amber-500/10 text-amber-400'
-                    : aiMessage.includes('取消')
-                    ? 'bg-amber-500/10 text-amber-400'
-                    : 'bg-red-500/10 text-red-400'
-                }`}>
+                <div
+                  className={`text-xs p-3 rounded-lg ${
+                    aiMessage.includes('成功') || aiMessage.includes('完成') || aiMessage.includes('已应用')
+                      ? 'bg-emerald-500/10 text-emerald-400'
+                      : aiMessage.includes('遗漏')
+                        ? 'bg-amber-500/10 text-amber-400'
+                        : aiMessage.includes('取消')
+                          ? 'bg-amber-500/10 text-amber-400'
+                          : 'bg-red-500/10 text-red-400'
+                  }`}
+                >
                   {aiMessage}
                   {aiDuration > 0 && aiMessage.includes('完成') && (
-                    <span className="ml-2 text-zinc-500">耗时 {aiDuration >= 1000 ? `${(aiDuration / 1000).toFixed(1)}s` : `${aiDuration}ms`}</span>
+                    <span className="ml-2 text-zinc-500">
+                      耗时 {aiDuration >= 1000 ? `${(aiDuration / 1000).toFixed(1)}s` : `${aiDuration}ms`}
+                    </span>
                   )}
                 </div>
               )}
@@ -2306,9 +2765,14 @@ function App() {
                       const isExpanded = aiExpandedFolders.has(idx)
                       const isEditing = aiEditingFolderName === idx
                       return (
-                        <div key={idx} className={`rounded-lg border overflow-hidden ${
-                          folder.existing ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-white/8 bg-white/[0.03]'
-                        }`}>
+                        <div
+                          key={idx}
+                          className={`rounded-lg border overflow-hidden ${
+                            folder.existing
+                              ? 'border-emerald-500/30 bg-emerald-500/5'
+                              : 'border-white/8 bg-white/[0.03]'
+                          }`}
+                        >
                           <div className="flex items-center gap-2 p-3">
                             <button
                               onClick={() => {
@@ -2321,7 +2785,11 @@ function App() {
                               }}
                               className="flex items-center gap-1 flex-1 min-w-0"
                             >
-                              {isExpanded ? <ChevronDown className="size-3.5 text-zinc-400 shrink-0" /> : <ChevronUp className="size-3.5 text-zinc-400 shrink-0" />}
+                              {isExpanded ? (
+                                <ChevronDown className="size-3.5 text-zinc-400 shrink-0" />
+                              ) : (
+                                <ChevronUp className="size-3.5 text-zinc-400 shrink-0" />
+                              )}
                               {isEditing ? (
                                 <input
                                   autoFocus
@@ -2361,7 +2829,9 @@ function App() {
                                 </span>
                               )}
                             </button>
-                            <span className="text-xs text-zinc-500 shrink-0">{folder.videoIds.length} 部</span>
+                            <span className="text-xs text-zinc-500 shrink-0">
+                              {folder.videoIds.length} 部
+                            </span>
                             <button
                               onClick={() => {
                                 setAiPreview((prev) => {
@@ -2422,7 +2892,11 @@ function App() {
                   disabled={aiApplying}
                   className="flex-1 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
                 >
-                  {aiApplying ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Check className="mr-2 size-4" />}
+                  {aiApplying ? (
+                    <LoaderCircle className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <Check className="mr-2 size-4" />
+                  )}
                   确认并应用
                 </Button>
               ) : (
@@ -2431,7 +2905,11 @@ function App() {
                   disabled={aiClassifying || !aiRule || !aiConfig.apiKey}
                   className="flex-1 h-11 rounded-xl bg-violet-600 hover:bg-violet-500 text-white"
                 >
-                  {aiClassifying ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
+                  {aiClassifying ? (
+                    <LoaderCircle className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 size-4" />
+                  )}
                   预览分类
                 </Button>
               )}
@@ -2443,10 +2921,23 @@ function App() {
       {/* 文件夹右键菜单 */}
       {contextMenuFolder && (
         <div
+          role="menu"
           className="fixed z-50 min-w-32 rounded-lg border border-white/10 bg-zinc-800 shadow-xl"
           style={{ left: contextMenuFolder.x, top: contextMenuFolder.y }}
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              setRenamingFolder({
+                id: Number(contextMenuFolder.id.replace('folder-', '')),
+                name: contextMenuFolder.name,
+              })
+              setContextMenuFolder(null)
+            }}
+          >
+            重命名分类
+          </button>
           <button
             onClick={() => void handleDeleteFolder(contextMenuFolder.id)}
             className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10"
@@ -2459,13 +2950,21 @@ function App() {
 
       {/* 手动刮削弹窗 */}
       {showManualScrape && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div
+          ref={legacyModalRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="匹配影视信息"
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+        >
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setShowManualScrape(false)}
           />
           <div className="relative w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl max-h-[80vh] overflow-auto">
             <button
+              aria-label="关闭影视信息匹配"
               onClick={() => setShowManualScrape(false)}
               className="absolute right-4 top-4 rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
             >
@@ -2535,9 +3034,7 @@ function App() {
                           {result.media_type && ` · ${result.media_type === 'movie' ? '电影' : '电视剧'}`}
                         </div>
                         {result.overview && (
-                          <div className="text-xs text-zinc-500 mt-1 line-clamp-2">
-                            {result.overview}
-                          </div>
+                          <div className="text-xs text-zinc-500 mt-1 line-clamp-2">{result.overview}</div>
                         )}
                       </div>
                     </div>
@@ -2554,9 +3051,7 @@ function App() {
             )}
 
             {!manualScrapeSearching && manualScrapeResults.length === 0 && manualScrapeQuery.trim() && (
-              <div className="py-8 text-center text-zinc-500 text-sm">
-                输入关键词后点击搜索按钮查找影视
-              </div>
+              <div className="py-8 text-center text-zinc-500 text-sm">输入关键词后点击搜索按钮查找影视</div>
             )}
           </div>
         </div>
@@ -2564,7 +3059,14 @@ function App() {
 
       {/* 数据库选择弹窗 */}
       {showDbSelector && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div
+          ref={legacyModalRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="选择数据库"
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+        >
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => !isSwitchingDb && setShowDbSelector(false)}
@@ -2591,9 +3093,7 @@ function App() {
                 正在切换数据库...
               </div>
             ) : availableDatabases.length === 0 ? (
-              <div className="py-8 text-center text-zinc-500">
-                未找到数据库文件
-              </div>
+              <div className="py-8 text-center text-zinc-500">未找到数据库文件</div>
             ) : (
               <div className="space-y-2">
                 {availableDatabases.map((db) => {
@@ -2631,6 +3131,74 @@ function App() {
         </div>
       )}
 
+      {toolsTab && (
+        <LibraryTools
+          videos={snapshot.videos}
+          initialTab={toolsTab}
+          onClose={() => setToolsTab(null)}
+          onSnapshot={setSnapshot}
+          onStatus={setStatusText}
+        />
+      )}
+      {renamingFolder && (
+        <Dialog
+          title="重命名分类"
+          onClose={() => {
+            setRenamingFolder(null)
+            setFolderError('')
+          }}
+          busy={folderBusy}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!renamingFolder.name.trim() || folderBusy || !window.videosorter) return
+              setFolderBusy(true)
+              setFolderError('')
+              void window.videosorter
+                .renameVirtualFolder(renamingFolder.id, renamingFolder.name.trim())
+                .then((next) => {
+                  setSnapshot(next)
+                  setRenamingFolder(null)
+                  setStatusText('分类已重命名。')
+                })
+                .catch((error) => setFolderError(String(error)))
+                .finally(() => setFolderBusy(false))
+            }}
+          >
+            <label className="dialog-field">
+              分类名称
+              <Input
+                aria-label="新分类名称"
+                maxLength={100}
+                value={renamingFolder.name}
+                onChange={(event) => setRenamingFolder({ ...renamingFolder, name: event.target.value })}
+              />
+            </label>
+            {folderError && (
+              <p className="field-error" role="alert">
+                {folderError}
+              </p>
+            )}
+            <div className="dialog-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={folderBusy}
+                onClick={() => {
+                  setRenamingFolder(null)
+                  setFolderError('')
+                }}
+              >
+                取消
+              </Button>
+              <Button type="submit" disabled={folderBusy || !renamingFolder.name.trim()}>
+                {folderBusy && <LoaderCircle size={15} className="animate-spin" />}保存
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      )}
       {/* 内置播放器 */}
       {playingVideo && defaultPlayer === 'web' && (
         <VideoPlayer
@@ -2638,21 +3206,29 @@ function App() {
           videoName={playingVideo.name}
           onClose={() => setPlayingVideo(null)}
           onNext={() => {
-            if (playingVideo.index < sortedVideos.length - 1) {
-              const next = sortedVideos[playingVideo.index + 1]
-              setPlayingVideo({ path: next.absolutePath, name: next.title || next.name, index: playingVideo.index + 1 })
+            if (playingVideo.index < playbackQueue.length - 1) {
+              const next = playbackQueue[playingVideo.index + 1]
+              setPlayingVideo({
+                path: next.absolutePath,
+                name: next.title || next.name,
+                index: playingVideo.index + 1,
+              })
             }
           }}
           onPrevious={() => {
             if (playingVideo.index > 0) {
-              const prev = sortedVideos[playingVideo.index - 1]
-              setPlayingVideo({ path: prev.absolutePath, name: prev.title || prev.name, index: playingVideo.index - 1 })
+              const prev = playbackQueue[playingVideo.index - 1]
+              setPlayingVideo({
+                path: prev.absolutePath,
+                name: prev.title || prev.name,
+                index: playingVideo.index - 1,
+              })
             }
           }}
-          playlist={sortedVideos.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
+          playlist={playbackQueue.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
           currentIndex={playingVideo.index}
           onSelectVideo={(index) => {
-            const video = sortedVideos[index]
+            const video = playbackQueue[index]
             setPlayingVideo({ path: video.absolutePath, name: video.title || video.name, index })
           }}
         />
@@ -2665,21 +3241,29 @@ function App() {
           videoName={playingVideo.name}
           onClose={() => setPlayingVideo(null)}
           onNext={() => {
-            if (playingVideo.index < sortedVideos.length - 1) {
-              const next = sortedVideos[playingVideo.index + 1]
-              setPlayingVideo({ path: next.absolutePath, name: next.title || next.name, index: playingVideo.index + 1 })
+            if (playingVideo.index < playbackQueue.length - 1) {
+              const next = playbackQueue[playingVideo.index + 1]
+              setPlayingVideo({
+                path: next.absolutePath,
+                name: next.title || next.name,
+                index: playingVideo.index + 1,
+              })
             }
           }}
           onPrevious={() => {
             if (playingVideo.index > 0) {
-              const prev = sortedVideos[playingVideo.index - 1]
-              setPlayingVideo({ path: prev.absolutePath, name: prev.title || prev.name, index: playingVideo.index - 1 })
+              const prev = playbackQueue[playingVideo.index - 1]
+              setPlayingVideo({
+                path: prev.absolutePath,
+                name: prev.title || prev.name,
+                index: playingVideo.index - 1,
+              })
             }
           }}
-          playlist={sortedVideos.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
+          playlist={playbackQueue.map((v) => ({ path: v.absolutePath, name: v.title || v.name }))}
           currentIndex={playingVideo.index}
           onSelectVideo={(index) => {
-            const video = sortedVideos[index]
+            const video = playbackQueue[index]
             setPlayingVideo({ path: video.absolutePath, name: video.title || video.name, index })
           }}
         />
@@ -2687,18 +3271,24 @@ function App() {
 
       {/* MPV 下载通知 */}
       {mpvDownload && (
-        <div className={`fixed bottom-4 right-4 z-[100] rounded-xl px-4 py-3 shadow-2xl backdrop-blur-sm border text-sm transition-all ${
-          mpvDownload.stage === 'error'
-            ? 'bg-red-900/90 border-red-700 text-red-200'
-            : mpvDownload.stage === 'complete'
-              ? 'bg-emerald-900/90 border-emerald-700 text-emerald-200'
-              : 'bg-zinc-900/95 border-white/10 text-zinc-200'
-        }`}>
+        <div
+          className={`fixed bottom-4 right-4 z-[100] rounded-xl px-4 py-3 shadow-2xl backdrop-blur-sm border text-sm transition-all ${
+            mpvDownload.stage === 'error'
+              ? 'bg-red-900/90 border-red-700 text-red-200'
+              : mpvDownload.stage === 'complete'
+                ? 'bg-emerald-900/90 border-emerald-700 text-emerald-200'
+                : 'bg-zinc-900/95 border-white/10 text-zinc-200'
+          }`}
+        >
           <div className="flex items-center gap-3">
             {mpvDownload.stage !== 'error' && mpvDownload.stage !== 'complete' && (
               <svg className="size-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
             )}
             {mpvDownload.stage === 'complete' && <span className="text-base shrink-0">✅</span>}

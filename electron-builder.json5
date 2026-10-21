@@ -4,14 +4,22 @@
   "appId": "com.videomanager.app",
   "asar": true,
   "productName": "VideoManager",
+  "publish": {
+    "provider": "github",
+    "owner": "coldwaterrr",
+    "repo": "VideoManager",
+    "releaseType": "draft"
+  },
   "directories": {
     "output": "release/${version}"
   },
   "files": [
     "dist",
-    "dist-electron"
+    "dist-electron/main.js",
+    "dist-electron/preload.cjs"
   ],
   "extraFiles": [
+    { "from": "media-tools", "to": "media-tools" },
     {
       "from": "mpv",
       "to": "mpv"
@@ -24,6 +32,7 @@
     "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
   },
   "win": {
+    "icon": "public/videomanager.ico",
     "target": [
       {
         "target": "nsis",

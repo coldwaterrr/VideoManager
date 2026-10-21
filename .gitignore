@@ -48,3 +48,21 @@ mpv/updater.bat
 *.sw?
 videosorter-backup.sqlite
 .claude
+
+# Local verification artifacts
+/media-tools/*.exe
+/media-tools/ffmpeg
+/media-tools/*.download
+output/
+.playwright-cli/
+
+# Local libraries, profiles and inspection notes
+profiles/
+*.sqlite
+*.sqlite3
+*.sqlite.tmp
+ai-config.json
+tmdb-config.json
+player-config.json
+mpv-config.json
+/REVIEW-*.md
