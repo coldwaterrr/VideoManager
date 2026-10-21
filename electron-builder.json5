@@ -13,6 +13,7 @@
     "dist-electron/preload.cjs"
   ],
   "extraFiles": [
+    { "from": "media-tools", "to": "media-tools" },
     {
       "from": "mpv",
       "to": "mpv"
@@ -25,6 +26,7 @@
     "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
   },
   "win": {
+    "icon": "public/videomanager.ico",
     "target": [
       {
         "target": "nsis",

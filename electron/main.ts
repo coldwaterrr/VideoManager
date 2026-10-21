@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 import { autoUpdater } from 'electron-updater'
+import { fallbackIcon } from './icon-fallback'
+import { getMediaAssets, warmMediaViewport, mediaCacheStats, pruneMediaCache, stopMediaCache, PREVIEW_SLOTS } from './media-cache'
+import { getSeries, previewSeries, applySeries, saveSeries, deleteSeries } from './series'
 
 // userData 路径: 项目根目录下的 .videosorter
 const require = createRequire(import.meta.url)
@@ -75,6 +78,7 @@ import {
   getDatabaseHandle,
   getDatabaseMeta,
   getLibrarySnapshot,
+  getMediaVideos,
   persistDatabase,
   scanVideosFromDirectory,
   toggleVideoFolder,
@@ -103,11 +107,14 @@ import { startMonitor, getMonitors, saveMonitors, checkMonitors, type MonitorDir
 import { previewConditionalCleanup, applyConditionalCleanup, getAutomaticCleanup, saveAutomaticCleanup, checkAutomaticCleanup } from './cleanup'
 
 let win: BrowserWindow | null
-app.on('second-instance', () => {
-  if (win?.isMinimized()) win.restore()
-  win?.show()
-  win?.focus()
-})
+function showMainWindow() {
+  if (!win || win.isDestroyed()) return
+  win.setSkipTaskbar(false)
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+app.on('second-instance', showMainWindow)
 // AI 分类 AbortController 管理（按窗口 ID）
 const aiAbortControllers = new Map<number, AbortController>()
 
@@ -123,8 +130,8 @@ function createWindow() {
       minWidth: 960,
       minHeight: 640,
       frame: false,
-      icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
-      backgroundColor: '#09090b',
+      icon: getApplicationIcon(),
+      backgroundColor: '#14151a',
       resizable: true,
       webPreferences: {
         // 开发模式下禁用 webSecurity，允许从 http://localhost 加载 file:// 视频
@@ -167,6 +174,25 @@ ipcMain.handle('database:get-meta', async () => {
 ipcMain.handle('library:get-snapshot', async () => {
   return getLibrarySnapshot()
 })
+
+ipcMain.handle('media:get', async (_event, id: number, preview = false, slot = 0) => {
+  if (!Number.isSafeInteger(id) || typeof preview !== 'boolean' || !Number.isInteger(slot) || slot < 0 || slot >= PREVIEW_SLOTS) throw new Error('视频参数无效。')
+  const [video] = await getMediaVideos([id])
+  if (!video) throw new Error('视频已不在当前库中。')
+  return getMediaAssets(video, preview, true, slot)
+})
+ipcMain.handle('media:warm', async (_event, ids: number[], preview: boolean) => {
+  if (!Array.isArray(ids) || ids.length > 48 || ids.some(id => !Number.isSafeInteger(id))) return
+  const selected = new Map((await getMediaVideos(ids)).map(video => [video.id, video]))
+  const videos = ids.map(id => selected.get(id)).filter((video): video is NonNullable<typeof video> => !!video)
+  warmMediaViewport(videos, preview === true)
+})
+ipcMain.handle('media:stats', mediaCacheStats)
+ipcMain.handle('series:get', getSeries)
+ipcMain.handle('series:preview', (_event, mode) => previewSeries(mode))
+ipcMain.handle('series:apply', (_event, preview) => applySeries(preview))
+ipcMain.handle('series:save', (_event, databasePath, name, ids, id) => saveSeries(databasePath, name, ids, id))
+ipcMain.handle('series:delete', (_event, databasePath, id) => deleteSeries(databasePath, id))
 
 ipcMain.handle('library:create-folder', async (_event, name: string) => {
   return createVirtualFolder(name)
@@ -620,70 +646,56 @@ ipcMain.handle('mpv:is-downloading', async () => {
 
 // ========== 窗口控制 ==========
 ipcMain.handle('win:minimize', () => {
-  win?.hide()
+  if (win && !win.isDestroyed()) win.minimize()
 })
 
 ipcMain.handle('win:close', () => {
-  win?.destroy()
   app.quit()
 })
 
-ipcMain.handle('win:isMaximized', () => win?.isMaximized())
+ipcMain.handle('win:isMaximized', () => !!win && !win.isDestroyed() && win.isMaximized())
 
 ipcMain.handle('win:maximize', () => {
-  win?.isMaximized() ? win?.unmaximize() : win?.maximize()
+  if (!win || win.isDestroyed()) return
+  win.isMaximized() ? win.unmaximize() : win.maximize()
 })
 
 // ========== 系统托盘 ==========
-function getTrayIconPath() {
-  const publicIcon = path.join(process.env.VITE_PUBLIC || '', 'electron-vite.ico')
-  const fs = require('fs')
-  if (fs.existsSync(publicIcon)) {
-    return publicIcon
+function getApplicationIcon(forTray = false): Electron.NativeImage {
+  const names = process.platform === 'win32'
+    ? ['videomanager.ico', forTray ? 'videomanager-tray.png' : 'videomanager.png']
+    : [forTray ? 'videomanager-tray.png' : 'videomanager.png']
+  for (const name of names) {
+    const image = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC || RENDERER_DIST, name))
+    if (!image.isEmpty()) return image
   }
-  const distIcon = path.join(process.env.APP_ROOT || '', 'dist', 'electron-vite.ico')
-  if (fs.existsSync(distIcon)) {
-    return distIcon
-  }
-  return ''
+  // Keep a visible icon even if an asset is missing in a damaged installation.
+  return nativeImage.createFromDataURL(fallbackIcon)
 }
 
 let tray: Tray | null = null
 
 function createTray() {
+  if (tray && !tray.isDestroyed()) return
   try {
-    let icon: Electron.NativeImage
-    const iconPath = getTrayIconPath()
-    const fs = require('fs')
-    if (iconPath && fs.existsSync(iconPath)) {
-      icon = nativeImage.createFromPath(iconPath)
-    } else {
-      icon = nativeImage.createEmpty()
-    }
-
-    tray = new Tray(icon)
+    tray = new Tray(getApplicationIcon(true))
     tray.setToolTip('VideoManager - 本地视频管理')
-
-    tray.on('click', () => {
-      win?.show()
-      win?.focus()
-    })
+    tray.on('click', showMainWindow)
+    tray.on('double-click', showMainWindow)
 
     const contextMenu = Menu.buildFromTemplate([
       {
         label: '打开',
-        click: () => {
-          win?.show()
-          win?.focus()
-        },
+        click: showMainWindow,
+      },
+      {
+        label: '隐藏到托盘',
+        click: () => { if (win && !win.isDestroyed()) win.hide() },
       },
       { type: 'separator' },
       {
         label: '退出',
-        click: () => {
-          win?.destroy()
-          app.quit()
-        },
+        click: () => app.quit(),
       },
     ])
     tray.setContextMenu(contextMenu)
@@ -692,13 +704,11 @@ function createTray() {
   }
 }
 
-function setupWindowBehaviors() {
-  if (!win) return
-  win.on('minimize', (e: Electron.Event) => {
-    e.preventDefault()
-    win?.hide()
-  })
-}
+app.on('before-quit', () => {
+  stopMediaCache()
+  if (tray && !tray.isDestroyed()) tray.destroy()
+  tray = null
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -710,17 +720,19 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
-  }
+    setMpvWindowRef(win)
+  } else showMainWindow()
 })
 
 if (ownsProfile) app.whenReady().then(async () => {
   try {
+    if (process.platform === 'win32') app.setAppUserModelId('com.videomanager.app')
     await ensureDatabase()
     createWindow()
     setMpvWindowRef(win)
     setupMpvIPC()
-    setupWindowBehaviors()
     createTray()
+    void pruneMediaCache().catch(() => {})
     setupAutoUpdater()
     startMonitor(() => win)
 

@@ -3,6 +3,12 @@ interface DatabaseMeta {
   tables: string[]
 }
 
+interface MediaAssets { thumbnail: string | null; preview: string | null; durationSeconds: number; cached: boolean; elapsedMs: number; previewSlot?: number; previewStartSeconds?: number; previewDurationSeconds?: number; error?: string }
+interface SeriesGroup { id: string; name: string; videoIds: number[]; createdAt: string }
+interface SeriesState { databasePath: string; groups: SeriesGroup[] }
+interface SeriesSuggestion { id: string; name: string; videoIds: number[]; reason: string; confidence: 'high' | 'review' }
+interface SeriesPreview { databasePath: string; fingerprint: string; groups: SeriesSuggestion[] }
+
 interface VideoRecord {
   id: number
   name: string
@@ -129,6 +135,14 @@ interface MpvDownloadProgress {
     videosorter?: {
       getDatabaseMeta: () => Promise<DatabaseMeta>
       getLibrarySnapshot: () => Promise<LibrarySnapshot>
+      getMediaAssets: (videoId: number, preview?: boolean, slot?: number) => Promise<MediaAssets>
+      warmMedia: (ids: number[], preview: boolean) => Promise<void>
+      getMediaCacheStats: () => Promise<{ bytes: number; thumbnails: number; previews: number; limitBytes: number }>
+      getSeries: () => Promise<SeriesState>
+      previewSeries: (mode: 'smart' | 'directory' | 'name') => Promise<SeriesPreview>
+      applySeries: (preview: SeriesPreview) => Promise<SeriesState>
+      saveSeries: (databasePath: string, name: string, videoIds: number[], id?: string) => Promise<SeriesState>
+      deleteSeries: (databasePath: string, id: string) => Promise<SeriesState>
       appGetVersion: () => Promise<{ version: string }>
       createVirtualFolder: (name: string) => Promise<LibrarySnapshot>
     deleteVirtualFolder: (folderId: number) => Promise<LibrarySnapshot>

@@ -412,6 +412,15 @@ export async function getLibrarySnapshot(): Promise<LibrarySnapshot> {
   }
 }
 
+// Thumbnail requests need only one row, not another complete library snapshot.
+export async function getMediaVideos(ids: number[]): Promise<VideoRecord[]> {
+  await ensureDatabase()
+  if (!ids.length) return []
+  const { database: db } = getDatabaseHandle()
+  const rows = mapRows<{ id: number; file_name: string; absolute_path: string; file_size: number; duration_seconds: number; modified_at: string; created_at: string }>(db.exec(`SELECT id, file_name, absolute_path, file_size, duration_seconds, modified_at, created_at FROM videos WHERE id IN (${ids.map(() => '?').join(',')})`, ids))
+  return rows.map(row => ({ id: Number(row.id), name: row.file_name, absolutePath: row.absolute_path, fileSize: Number(row.file_size), durationSeconds: Number(row.duration_seconds), modifiedAt: row.modified_at, addedAt: row.created_at, folderIds: [] }))
+}
+
 export async function createVirtualFolder(name: string) {
   await ensureDatabase()
 

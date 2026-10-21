@@ -5,7 +5,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $workspace = [System.IO.Path]::GetFullPath($WorkspaceRoot)
 $sourceRoot = if (Test-Path -LiteralPath (Join-Path $workspace 'package.json')) { $workspace } else { Join-Path $workspace 'source' }
-$program = Join-Path $sourceRoot 'release\0.4.1\win-unpacked\VideoManager.exe'
+$version = (Get-Content -LiteralPath (Join-Path $sourceRoot 'package.json') -Raw | ConvertFrom-Json).version
+$program = Join-Path $sourceRoot "release\$version\win-unpacked\VideoManager.exe"
 if (-not (Test-Path -LiteralPath $program)) { throw "New application not found: $program" }
 $profile = Join-Path $workspace 'profiles\0.4.0'
 $original = Join-Path $env:APPDATA 'VideoManager'
@@ -19,7 +20,7 @@ if (-not (Test-Path -LiteralPath $marker)) {
       Copy-Item -LiteralPath $sourceFile -Destination $targetFile
     }
   }
-  @{ source = $original; copiedAt = (Get-Date).ToString('o'); version = '0.4.1' } | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding UTF8
+  @{ source = $original; copiedAt = (Get-Date).ToString('o'); version = $version } | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding UTF8
 }
 $env:VIDEOMANAGER_DATA_DIR = $profile
 if ($PrepareOnly) {
